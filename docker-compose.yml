@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_STORAGE_ROOT: /app/storage
+      APP_MAX_REPORTS: 10
+    restart: unless-stopped
+    volumes:
+      - ./storage:/app/storage
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
