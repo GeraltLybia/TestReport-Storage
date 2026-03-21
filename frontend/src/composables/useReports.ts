@@ -3,20 +3,24 @@ import { computed, onMounted, ref } from 'vue'
 import {
   deleteReport,
   fetchHistoryInfo,
+  fetchHistoryRuns,
   fetchReports,
   uploadHistory,
   uploadReport,
 } from '../api/reports'
 import { formatDate, formatDuration, formatSize, getReportTitle } from '../utils/reports'
-import type { HistoryInfo, Report } from '../types/reports'
+import type { HistoryInfo, HistoryRun, Report } from '../types/reports'
 
 export function useReports() {
   const reports = ref<Report[]>([])
   const selectedReportId = ref<string | null>(null)
   const loading = ref(false)
+  const reportsLoaded = ref(false)
   const uploading = ref(false)
   const error = ref<string | null>(null)
   const historyInfo = ref<HistoryInfo | null>(null)
+  const historyRuns = ref<HistoryRun[]>([])
+  const historyLoading = ref(false)
   const sidebarVisible = ref(true)
 
   const selectedReport = computed(() => {
@@ -42,6 +46,7 @@ export function useReports() {
       error.value = (exception as Error).message
     } finally {
       loading.value = false
+      reportsLoaded.value = true
     }
   }
 
@@ -50,6 +55,17 @@ export function useReports() {
       historyInfo.value = await fetchHistoryInfo()
     } catch {
       // No-op for this side panel widget.
+    }
+  }
+
+  async function loadHistoryRuns() {
+    try {
+      historyLoading.value = true
+      historyRuns.value = await fetchHistoryRuns()
+    } catch {
+      historyRuns.value = []
+    } finally {
+      historyLoading.value = false
     }
   }
 
@@ -99,6 +115,7 @@ export function useReports() {
     try {
       await uploadHistory(file)
       await loadHistoryInfo()
+      await loadHistoryRuns()
     } catch (exception) {
       error.value = (exception as Error).message
     } finally {
@@ -113,6 +130,7 @@ export function useReports() {
   onMounted(() => {
     loadReports()
     loadHistoryInfo()
+    loadHistoryRuns()
   })
 
   return {
@@ -126,10 +144,14 @@ export function useReports() {
     handleDownloadReport,
     handleHistoryUpload,
     handleUploadReport,
+    historyLoading,
     historyInfo,
+    historyRuns,
     loading,
+    loadHistoryRuns,
     loadReports,
     reports,
+    reportsLoaded,
     selectedReportId,
     sidebarVisible,
     uploading,

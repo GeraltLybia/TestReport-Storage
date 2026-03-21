@@ -3,6 +3,7 @@ type Theme = 'dark' | 'light'
 
 defineProps<{
   sidebarVisible: boolean
+  showSidebarToggle?: boolean
   theme: Theme
   uploading: boolean
 }>()
@@ -16,12 +17,21 @@ const emit = defineEmits<{
 
 <template>
   <header class="app-header">
-    <div>
+    <div class="app-header-brand">
       <h1>Allure Reports</h1>
       <p class="app-subtitle">Хранилище и просмотр отчетов тестов</p>
+      <nav class="app-nav" aria-label="Primary">
+        <RouterLink class="app-nav-link" :to="{ name: 'dashboard' }">
+          Dashboard
+        </RouterLink>
+        <RouterLink class="app-nav-link" :to="{ name: 'reports' }">
+          Reports
+        </RouterLink>
+      </nav>
     </div>
     <div class="header-actions">
       <button
+        v-if="showSidebarToggle !== false"
         class="text-button header-toggle"
         type="button"
         @click="emit('toggle-sidebar')"

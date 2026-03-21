@@ -1,4 +1,4 @@
-import type { HistoryInfo, Report } from '../types/reports'
+import type { HistoryInfo, HistoryRun, Report } from '../types/reports'
 
 async function parseApiError(response: Response, fallback: string) {
   const payload = await response.json().catch(() => null)
@@ -19,6 +19,20 @@ export async function fetchHistoryInfo() {
     throw new Error(await parseApiError(response, 'Ошибка загрузки history'))
   }
   return (await response.json()) as HistoryInfo
+}
+
+export async function fetchHistoryRuns() {
+  const response = await fetch('/api/history')
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Ошибка загрузки history'))
+  }
+
+  const text = await response.text()
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as HistoryRun)
 }
 
 export async function uploadReport(file: File) {

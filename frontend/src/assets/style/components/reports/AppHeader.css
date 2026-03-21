@@ -5,6 +5,12 @@
   gap: 1.5rem;
 }
 
+.app-header-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
 .app-header h1 {
   font-size: 2.1rem;
   font-weight: 600;
@@ -14,9 +20,38 @@
 }
 
 .app-subtitle {
-  margin: 0.25rem 0 0;
+  margin: 0;
   font-size: 0.95rem;
   color: #94a3b8;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.app-nav-link {
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  text-decoration: none;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.app-nav-link:hover {
+  color: #f8fafc;
+  background: rgba(14, 165, 233, 0.16);
+  border-color: rgba(103, 232, 249, 0.28);
+}
+
+.app-nav-link.router-link-active {
+  color: #082f49;
+  background: linear-gradient(135deg, #67e8f9, #a7f3d0);
+  border-color: transparent;
 }
 
 .header-actions {
@@ -131,6 +166,23 @@
   color: #64748b;
 }
 
+:root[data-theme='light'] .app-nav-link {
+  color: #334155;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+:root[data-theme='light'] .app-nav-link:hover {
+  color: #0f172a;
+  background: rgba(186, 230, 253, 0.9);
+  border-color: rgba(56, 189, 248, 0.26);
+}
+
+:root[data-theme='light'] .app-nav-link.router-link-active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0891b2, #0f766e);
+}
+
 :root[data-theme='light'] .text-button {
   color: #0f172a;
   background: rgba(148, 163, 184, 0.16);
@@ -167,5 +219,6 @@
   .header-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }

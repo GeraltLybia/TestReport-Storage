@@ -22,3 +22,35 @@ export type HistoryInfo = {
   updated_at: string | null
   size: number
 }
+
+export type HistoryLabel = {
+  name: string
+  value: string
+}
+
+export type HistoryTestResult = {
+  id?: string
+  name?: string
+  fullName?: string
+  environment?: string
+  status?: string
+  start?: number
+  stop?: number
+  duration?: number
+  message?: string
+  trace?: string
+  labels?: HistoryLabel[]
+  url?: string
+  historyId?: string
+  reportLinks?: string[]
+}
+
+export type HistoryRun = {
+  uuid: string
+  name: string
+  timestamp: number
+  knownTestCaseIds?: string[]
+  testResults?: Record<string, HistoryTestResult>
+  metrics?: Record<string, unknown>
+  url?: string
+}

@@ -23,6 +23,7 @@ const {
   loading,
   loadReports,
   reports,
+  reportsLoaded,
   selectedReportId,
   sidebarVisible,
   uploading,
@@ -46,8 +47,12 @@ function openReport(id: string) {
 }
 
 watch(
-  [reports, routeReportId],
-  ([items, reportId]) => {
+  [reports, routeReportId, reportsLoaded],
+  ([items, reportId, loaded]) => {
+    if (!loaded) {
+      return
+    }
+
     if (items.length === 0) {
       selectedReportId.value = null
       if (reportId) {
