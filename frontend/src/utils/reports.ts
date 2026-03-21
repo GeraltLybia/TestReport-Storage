@@ -1,4 +1,4 @@
-import type { Report } from './types'
+import type { Report } from '../types/reports'
 
 export function formatDate(value: string | null) {
   if (!value) return '-'

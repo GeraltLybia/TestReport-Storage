@@ -1,4 +1,4 @@
-import type { HistoryInfo, Report } from './types'
+import type { HistoryInfo, Report } from '../types/reports'
 
 async function parseApiError(response: Response, fallback: string) {
   const payload = await response.json().catch(() => null)

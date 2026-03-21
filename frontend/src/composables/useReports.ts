@@ -6,9 +6,9 @@ import {
   fetchReports,
   uploadHistory,
   uploadReport,
-} from './api'
-import { formatDate, formatDuration, formatSize, getReportTitle } from './utils'
-import type { HistoryInfo, Report } from './types'
+} from '../api/reports'
+import { formatDate, formatDuration, formatSize, getReportTitle } from '../utils/reports'
+import type { HistoryInfo, Report } from '../types/reports'
 
 export function useReports() {
   const reports = ref<Report[]>([])
@@ -38,11 +38,6 @@ export function useReports() {
       error.value = null
       const data = await fetchReports()
       reports.value = data
-
-      const firstReport = data.length > 0 ? data[0] : undefined
-      if (!selectedReportId.value && firstReport) {
-        selectedReportId.value = firstReport.id
-      }
     } catch (exception) {
       error.value = (exception as Error).message
     } finally {
