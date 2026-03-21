@@ -1,5 +1,41 @@
-# Vue 3 + TypeScript + Vite
+# Frontend
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Frontend for Allure Reports Storage built with Vue 3, TypeScript, Vite and Nginx.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## Pages
+- `/dashboard` - QA analytics dashboard based on `history.jsonl`
+- `/reports` - list of uploaded reports and built-in report viewer
+- `/reports/:reportId` - direct link to a specific report
+
+## Dashboard Capabilities
+- History-based KPIs: runs, unique tests, pass rate, p95 duration
+- Stability analytics: flaky tests, always failed, always passed, incidents
+- Recent run trends
+- Most unstable tests
+- Failure signatures
+- Tag health
+- Test details panel opened from Stability popup
+
+## Filters
+Dashboard supports filters by:
+- `tag` (multi-select)
+- `suite`
+- `environment`
+- `failure signature`
+
+Filters are synced to the page URL, so the dashboard state can be shared with a direct link.
+
+## Development
+```bash
+cd /Users/zaharpirozenko/Documents/allure3_folder/frontend
+npm ci
+npm run dev
+```
+
+Dev server: `http://localhost:5173`
+
+## Production Build
+```bash
+cd /Users/zaharpirozenko/Documents/allure3_folder/frontend
+npm run build
+```

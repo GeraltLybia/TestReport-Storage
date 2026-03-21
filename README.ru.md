@@ -54,13 +54,40 @@ npm run dev
 Frontend dev server: `http://localhost:5173`
 
 ## Основные возможности
+- Отдельная страница Dashboard для QA-аналитики по истории прогонов
 - Загрузка архивов отчетов Allure (`.zip`)
 - Просмотр списка загруженных отчетов
 - Встроенный просмотр отчетов в iframe
 - Скачивание и удаление отчетов
 - Загрузка/скачивание `history.jsonl`
+- History-based метрики из `history.jsonl`: pass rate, unstable/flaky tests, failure signatures, tag health, trends
+- Фильтры на Dashboard по `tag`, `suite`, `environment` и `failure signature`
+- Deep-link фильтров через query-параметры URL на странице Dashboard
 - Автоматическая ротация отчетов по лимиту (по умолчанию храним 10 последних)
 - Healthcheck endpoint: `GET /health`
+
+## Dashboard
+Dashboard доступен по адресу `http://localhost:8080/dashboard` в Docker-развертывании
+или `http://localhost:5173/dashboard` в dev-режиме frontend.
+
+Что показывает Dashboard:
+- KPI по истории прогонов: runs, unique tests, pass rate, p95 duration
+- Stability-блок: flaky tests, always failed, always passed, incidents
+- Тренд последних прогонов по статусам `passed / failed / broken`
+- Самые нестабильные тесты
+- Топ failure signatures
+- Health по тегам
+- Быстрые переходы в последние и проблемные отчеты
+
+Как используются данные:
+- Summary по отчетам берется из распакованных Allure-отчетов
+- QA-метрики и тренды строятся по `storage/history.jsonl`
+- Если `history.jsonl` не загружен, dashboard показывает только пустое состояние для history-based виджетов
+
+Интерактивность:
+- Клик по карточкам в Stability открывает список конкретных тестов
+- Из попапа Stability можно выбрать тест и открыть блок `Test Details`
+- Клик по tag health и failure signatures включает соответствующий фильтр
 
 ## Конфигурация
 Переменные окружения backend:

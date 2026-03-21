@@ -54,13 +54,40 @@ npm run dev
 Frontend dev server: `http://localhost:5173`
 
 ## Main Features
+- Dedicated Dashboard page for QA analytics based on run history
 - Upload Allure report archives (`.zip`)
 - Browse stored reports
 - Preview reports directly in iframe viewer
 - Download and delete reports
 - Upload/download `history.jsonl`
+- History-based metrics from `history.jsonl`: pass rate, unstable/flaky tests, failure signatures, tag health, trends
+- Dashboard filters by `tag`, `suite`, `environment`, and `failure signature`
+- Deep-linkable Dashboard filters via URL query parameters
 - Automatic report retention by limit (default 10 latest reports)
 - Healthcheck endpoint: `GET /health`
+
+## Dashboard
+Dashboard is available at `http://localhost:8080/dashboard` in Docker deployment
+or `http://localhost:5173/dashboard` in frontend dev mode.
+
+What the Dashboard shows:
+- History KPIs: runs, unique tests, pass rate, p95 duration
+- Stability block: flaky tests, always failed, always passed, incidents
+- Recent runs trend for `passed / failed / broken`
+- Most unstable tests
+- Top failure signatures
+- Tag health
+- Quick navigation to recent and problematic reports
+
+How the data is used:
+- Report summary widgets are built from extracted Allure reports
+- QA metrics and trends are built from `storage/history.jsonl`
+- If `history.jsonl` is missing, history-based widgets remain empty-state
+
+Interactivity:
+- Clicking Stability cards opens a popup with matching test names
+- From the Stability popup, you can select a test and open the `Test Details` panel
+- Clicking tag health and failure signatures applies the corresponding filter
 
 ## Configuration
 Backend environment variables:
