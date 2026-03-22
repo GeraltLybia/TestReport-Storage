@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 
-from ...dependencies import get_storage_service
+from ...dependencies import get_history_service
 from ...schemas.history import HistoryDashboardSummary, HistoryInfo, HistorySelectedTestDetails
 from ...schemas.report import MessageResponse
-from ...services.storage_service import StorageService
+from ...services.reporting import HistoryService
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/history", tags=["history"])
     description="Возвращает текущий файл `history.jsonl` из хранилища.",
     responses={404: {"description": "Файл history не найден"}},
 )
-async def download_history(service: StorageService = Depends(get_storage_service)):
+async def download_history(service: HistoryService = Depends(get_history_service)):
     history_path = service.get_history_path()
     return FileResponse(
         path=history_path,
@@ -36,7 +36,7 @@ async def download_history(service: StorageService = Depends(get_storage_service
 )
 async def upload_history(
     file: UploadFile = File(...),
-    service: StorageService = Depends(get_storage_service),
+    service: HistoryService = Depends(get_history_service),
 ):
     return await service.upload_history(file)
 
@@ -51,7 +51,7 @@ async def upload_history(
         500: {"description": "Внутренняя ошибка при перестроении index"},
     },
 )
-async def rebuild_history_index(service: StorageService = Depends(get_storage_service)):
+async def rebuild_history_index(service: HistoryService = Depends(get_history_service)):
     return service.rebuild_history_index()
 
 
@@ -61,7 +61,7 @@ async def rebuild_history_index(service: StorageService = Depends(get_storage_se
     summary="Получить метаданные history",
     description="Возвращает количество записей, время обновления и размер `history.jsonl`.",
 )
-async def get_history_info(service: StorageService = Depends(get_storage_service)):
+async def get_history_info(service: HistoryService = Depends(get_history_service)):
     return service.history_info()
 
 
@@ -76,7 +76,7 @@ async def get_history_dashboard(
     suite: str | None = None,
     environment: str | None = None,
     signature: str | None = None,
-    service: StorageService = Depends(get_storage_service),
+    service: HistoryService = Depends(get_history_service),
 ):
     parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
     return service.get_history_dashboard(
@@ -100,7 +100,7 @@ async def get_history_test_details(
     suite: str | None = None,
     environment: str | None = None,
     signature: str | None = None,
-    service: StorageService = Depends(get_storage_service),
+    service: HistoryService = Depends(get_history_service),
 ):
     parsed_tags = [item.strip() for item in (tags or "").split(",") if item.strip()]
     details = service.get_history_test_details(

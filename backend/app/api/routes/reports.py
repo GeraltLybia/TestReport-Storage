@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from ...dependencies import get_storage_service
+from ...dependencies import get_report_storage_service
 from ...schemas.report import MessageResponse, ReportItem, UploadResponse
-from ...services.storage_service import StorageService
+from ...services.reporting import ReportStorageService
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
     summary="Получить список отчетов",
     description="Возвращает список загруженных Allure-отчетов с метаданными.",
 )
-async def get_reports(service: StorageService = Depends(get_storage_service)):
+async def get_reports(service: ReportStorageService = Depends(get_report_storage_service)):
     return service.list_reports()
 
 
@@ -31,7 +31,7 @@ async def get_reports(service: StorageService = Depends(get_storage_service)):
 )
 async def upload_report(
     file: UploadFile = File(...),
-    service: StorageService = Depends(get_storage_service),
+    service: ReportStorageService = Depends(get_report_storage_service),
 ):
     return await service.upload_report(file)
 
@@ -48,7 +48,7 @@ async def upload_report(
 )
 async def delete_report(
     report_id: str,
-    service: StorageService = Depends(get_storage_service),
+    service: ReportStorageService = Depends(get_report_storage_service),
 ):
     return service.delete_report(report_id)
 
@@ -61,7 +61,7 @@ async def delete_report(
 )
 async def download_report(
     report_id: str,
-    service: StorageService = Depends(get_storage_service),
+    service: ReportStorageService = Depends(get_report_storage_service),
 ):
     zip_path, filename = service.create_report_archive(report_id)
     return FileResponse(

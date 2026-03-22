@@ -1,3 +1,13 @@
-from .storage_service import StorageService
+__all__ = ["HistoryService", "ReportStorageService", "StorageContext", "StorageService"]
 
-__all__ = ["StorageService"]
+
+def __getattr__(name: str):
+    if name in {"HistoryService", "ReportStorageService", "StorageContext"}:
+        from . import reporting
+
+        return getattr(reporting, name)
+    if name == "StorageService":
+        from .storage_service import StorageService
+
+        return StorageService
+    raise AttributeError(name)
