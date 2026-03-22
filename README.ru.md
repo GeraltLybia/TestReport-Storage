@@ -5,8 +5,21 @@
 ## Структура проекта
 - `frontend` - приложение на Vue 3 (интерфейс управления и просмотр отчетов)
 - `backend` - сервис на FastAPI (загрузка/скачивание/список/удаление отчетов, работа с history)
-- `storage` - постоянное хранилище отчетов и `history.jsonl`
+- `storage` - runtime-директория для отчетов и `history.jsonl`, находится в `.gitignore`
 - `docker-compose.yml` - orchestration контейнеров для production-like запуска
+
+## Backend-структура
+Внутренний backend-код для домена отчетов и history теперь лежит в пакете `app/services/reporting`.
+
+Логика разделена по слоям:
+- `app/services/reporting/reports.py` - сервис работы с отчетами
+- `app/services/reporting/history.py` - сервис работы с `history.jsonl`
+- `app/services/reporting/history_index.py` - построение и обновление `history_index.json`
+- `app/services/reporting/analytics.py` - агрегаты для dashboard
+- `app/services/reporting/repositories/` - файловые repository-слои
+- `app/services/reporting/models.py` - внутренние typed-модели
+
+Это сделано специально, чтобы не путать кодовый пакет с runtime-папкой `storage/`.
 
 ## Документация API (Swagger/OpenAPI)
 Когда backend запущен:

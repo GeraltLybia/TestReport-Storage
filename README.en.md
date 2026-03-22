@@ -5,8 +5,21 @@ Web application for storing and viewing Allure test reports.
 ## Project Structure
 - `frontend` - Vue 3 application (UI for report management and viewer)
 - `backend` - FastAPI service (upload/download/list/delete reports, history management)
-- `storage` - persistent report files and `history.jsonl`
+- `storage` - runtime directory for report files and `history.jsonl`, ignored by git
 - `docker-compose.yml` - production-like container orchestration
+
+## Backend Structure
+The internal backend code for reports and history now lives in the `app/services/reporting` package.
+
+The logic is split by responsibility:
+- `app/services/reporting/reports.py` - report service
+- `app/services/reporting/history.py` - `history.jsonl` service
+- `app/services/reporting/history_index.py` - build/update logic for `history_index.json`
+- `app/services/reporting/analytics.py` - dashboard aggregates
+- `app/services/reporting/repositories/` - file-based repositories
+- `app/services/reporting/models.py` - internal typed models
+
+This is intentional so the code package is not confused with the runtime `storage/` directory.
 
 ## API Documentation (Swagger/OpenAPI)
 When backend is running:
