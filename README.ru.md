@@ -12,7 +12,7 @@
 - `docker-compose.yml` - orchestration контейнеров для production-like запуска
 
 ## Backend-структура
-Внутренний backend-код для домена отчетов и history теперь лежит в пакете `app/services/reporting`.
+Внутренний backend-код для домена отчетов и history лежит в пакете `app/services/reporting`.
 
 Логика разделена по слоям:
 - `app/services/reporting/reports.py` - сервис работы с отчетами
