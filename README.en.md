@@ -12,7 +12,7 @@ This is an independent product for storing, browsing, and analyzing test reports
 - `docker-compose.yml` - production-like container orchestration
 
 ## Backend Structure
-The internal backend code for reports and history now lives in the `app/services/reporting` package.
+The internal backend code for reports and history lives in the `app/services/reporting` package.
 
 The logic is split by responsibility:
 - `app/services/reporting/reports.py` - report service
