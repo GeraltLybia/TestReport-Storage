@@ -53,6 +53,17 @@ const { theme } = useTheme()
         </svg>
         Прогоны
       </RouterLink>
+      <RouterLink
+        class="app-nav-link"
+        :class="{ 'router-link-active': String($route.name ?? '').startsWith('coverage') }"
+        :to="{ name: 'coverage' }"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3a9 9 0 1 0 9 9h-9z" />
+          <path d="M15 3.5A9 9 0 0 1 20.5 9H15z" />
+        </svg>
+        Покрытие API
+      </RouterLink>
     </nav>
 
     <div class="app-sidebar-footer">

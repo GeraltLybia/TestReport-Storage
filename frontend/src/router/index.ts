@@ -33,6 +33,21 @@ const router = createRouter({
       component: () => import('../views/runs/RunsView.vue'),
     },
     {
+      path: '/coverage',
+      name: 'coverage',
+      component: () => import('../views/coverage/CoverageListView.vue'),
+    },
+    {
+      path: '/coverage/new',
+      name: 'coverage-new',
+      component: () => import('../views/coverage/CoverageNewView.vue'),
+    },
+    {
+      path: '/coverage/:measurementId',
+      name: 'coverage-by-id',
+      component: () => import('../views/coverage/CoverageView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/dashboard',
     },

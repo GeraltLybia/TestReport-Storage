@@ -44,3 +44,10 @@ def get_history_service() -> HistoryService:
         index_service=index_service,
         analytics_service=analytics_service,
     )
+
+
+@lru_cache(maxsize=1)
+def get_coverage_service():
+    from .services.coverage.service import CoverageService
+
+    return CoverageService(get_storage_context())
