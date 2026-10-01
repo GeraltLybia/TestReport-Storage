@@ -18,6 +18,8 @@
 - `app/services/reporting/history.py` - сервис работы с `history.jsonl`
 - `app/services/reporting/history_index.py` - построение и обновление `history_index.json`
 - `app/services/reporting/analytics.py` - агрегаты для dashboard
+- `app/services/reporting/runs.py` - прогоны, восстановленные из history index
+- `app/services/coverage/` - измерение покрытия API: разбор log-вложений, сопоставление с OpenAPI и GraphQL-схемой
 - `app/services/reporting/repositories/` - файловые repository-слои
 - `app/services/reporting/models.py` - внутренние typed-модели
 
@@ -64,16 +66,18 @@ npm run dev
 Frontend dev server: `http://localhost:5173`
 
 ## Основные возможности
-- Отдельная страница Dashboard для QA-аналитики по истории прогонов
-- Загрузка архивов отчетов Allure (`.zip`)
-- Просмотр списка загруженных отчетов
-- Встроенный просмотр отчетов в iframe
-- Скачивание и удаление отчетов
-- Загрузка/скачивание `history.jsonl`
-- History-based метрики из `history.jsonl`: pass rate, unstable/flaky tests, failure signatures, tag health, trends
-- Фильтры на Dashboard по `tag`, `suite`, `environment` и `failure signature`
-- Deep-link фильтров через query-параметры URL на странице Dashboard
-- Автоматическая ротация отчетов по лимиту (по умолчанию храним 10 последних)
+Продуктовое описание со скриншотами — в [README.md](./README.md).
+
+- Дашборд качества по истории прогонов: pass rate и риск, тренд прогонов, нестабильные тесты с полосой последних запусков, сигнатуры падений, состояние по тегам
+- Фильтры дашборда по suite, environment, сигнатуре сбоя, периоду и тегам (с поиском по тегам); фильтры сохраняются в query-параметрах URL
+- Панель деталей теста: последний статус, pass rate, длительность по прогонам, история запусков с ошибками
+- Загрузка Allure-отчётов (`.zip`), список с поиском и фильтром по статусу, встроенный просмотр, скачивание и удаление
+- Вкладка «Результаты тестов» у отчёта: упавшие и все тесты из данных самого Allure-отчёта
+- Раздел «Прогоны»: прогоны, восстановленные из `history.jsonl`, постранично с сервера, с результатами тестов
+- Покрытие API: REST по OpenAPI/Swagger и GraphQL по схеме (SDL или интроспекция) на основе log-вложений тестов; граф схемы в стиле GraphQL Voyager
+- Загрузка/скачивание `history.jsonl`, инкрементальное обновление индекса истории
+- Светлая и тёмная темы
+- Автоматическая ротация отчётов по лимиту (по умолчанию храним 10 последних)
 - Healthcheck endpoint: `GET /health`
 
 ## Reports API
@@ -81,6 +85,7 @@ Frontend dev server: `http://localhost:5173`
 - `POST /api/reports/upload` - загрузить новый Allure-отчет в виде `ZIP`-архива (`multipart/form-data`, поле `file`)
 - `GET /api/reports/{report_id}/download` - скачать конкретный отчет как `ZIP`-архив
 - `DELETE /api/reports/{report_id}` - удалить отчет по его идентификатору
+- `GET /api/reports/{report_id}/results?status=incidents|all|failed|broken|passed` - результаты тестов отчета из его Allure-данных (по умолчанию только failed и broken)
 
 ## History API
 - `GET /api/history` - скачать текущий `history.jsonl`
@@ -88,38 +93,54 @@ Frontend dev server: `http://localhost:5173`
 - `GET /api/history/info` - получить метаданные `history.jsonl`
 - `GET /api/history/dashboard` - получить агрегаты dashboard без скачивания всего файла
 - `GET /api/history/dashboard/tests/{test_key}` - получить детали выбранного теста для dashboard
+- `GET /api/history/runs?search=&status=&limit=&offset=` - постраничный список прогонов из history index
+- `GET /api/history/runs/{run_uuid}/results?status=incidents|all|...` - результаты тестов прогона
 - `POST /api/history/rebuild-index` - принудительно полностью перечитать `history.jsonl` и пересобрать `history_index.json`
 
-## Dashboard
-Dashboard доступен по адресу `http://localhost:9999/dashboard` в Docker-развертывании
-или `http://localhost:5173/dashboard` в dev-режиме frontend.
+## Coverage API
+- `GET /api/coverage` - список измерений покрытия
+- `POST /api/coverage` - новое измерение (`multipart/form-data`): `kind` (`rest` | `graphql`), `spec` (файл `openapi.json` или схема GraphQL — SDL или JSON интроспекции), `report_ids` (ID отчетов через запятую), `name`, для REST — `base_path` и `host` (необязательный фильтр, несколько через запятую), для GraphQL — `endpoint`
+- `GET /api/coverage/{id}` - результат измерения
+- `POST /api/coverage/{id}/recalculate` - пересчитать с сохраненной спецификацией и теми же отчетами
+- `DELETE /api/coverage/{id}` - удалить измерение
+
+Как считается покрытие:
+- Источник — текстовые log-вложения тестов в загруженных отчетах (`data/attachments/*.txt`), записи `api_controller`: `Запрос: METHOD URL`, `Статус код ответа: NNN`, `Запрос: "URL" <graphql-запрос> Переменные: ...`
+- REST: вызов сопоставляется с шаблоном пути из спецификации с учетом base path. Хост из `servers` не используется как фильтр (генераторы часто пишут туда адрес, откуда скачали спецификацию). Если хост не задан, сервису принадлежат хосты, у которых хотя бы один запрос совпал с операцией; остальные хосты показываются отдельно
+- GraphQL: запросы проверяются по схеме через `graphql-core`, учитываются поля, аргументы, фрагменты и union
+- Измерение хранится снимком в `storage/coverage/<id>/` (спецификация, параметры и результат) и не меняется при загрузке новых отчетов
+
+## Интерфейс
+Адреса страниц (`http://localhost:9999` в Docker-развертывании или `http://localhost:5173` в dev-режиме):
+- `/dashboard` - дашборд качества
+- `/reports`, `/reports/{id}` - загруженные отчеты
+- `/runs`, `/runs/{uuid}` - прогоны из истории
+- `/coverage`, `/coverage/new`, `/coverage/{id}` - измерения покрытия API
 
 Что показывает Dashboard:
-- KPI по истории прогонов: runs, unique tests, pass rate, p95 duration
-- Stability-блок: flaky tests, always failed, always passed, incidents
-- Тренд последних прогонов по статусам `passed / failed / broken`
-- Самые нестабильные тесты
-- Топ failure signatures
-- Health по тегам
-- Быстрые переходы в последние и проблемные отчеты
+- KPI: pass rate с риском, прогоны, уникальные тесты, нестабильные тесты, P95 длительности
+- Тренд последних прогонов по статусам `passed / failed / broken`; клик открывает отчет или прогон
+- Общая стабильность: распределение статусов и списки «всегда проходят», «всегда падают», «инциденты»
+- Самые нестабильные тесты (есть и успешные, и упавшие запуски) с полосой последних 10 статусов
+- Топ сигнатур падений и состояние по тегам; клик включает соответствующий фильтр
+- Проблемные прогоны по загруженным отчетам
 
 Как используются данные:
-- Summary по отчетам берется из распакованных Allure-отчетов
-- QA-метрики и тренды строятся по агрегированному индексу `storage/history_index.json`
+- Summary и результаты тестов отчета берутся из распакованных Allure-отчетов
+- QA-метрики, тренды и прогоны строятся по агрегированному индексу `storage/history_index.json`
 - `history_index.json` создается лениво при первой обработке `history.jsonl` и не требуется для старта сервиса
 - При загрузке нового `history.jsonl`, если файл дописан в конец, backend обычно дочитывает только новый хвост и обновляет индекс инкрементально
 - Если индекс отсутствует, поврежден или есть сомнение в консистентности, можно вызвать `POST /api/history/rebuild-index` для полного rebuild из текущего `history.jsonl`
-- Если `history.jsonl` не загружен, dashboard показывает только пустое состояние для history-based виджетов
-
-Интерактивность:
-- Клик по карточкам в Stability открывает список конкретных тестов
-- Из попапа Stability можно выбрать тест и открыть блок `Test Details`
-- Клик по tag health и failure signatures включает соответствующий фильтр
+- Если `history.jsonl` не загружен, history-based виджеты показывают пустое состояние
 
 ## Конфигурация
 Переменные окружения backend:
 - `APP_STORAGE_ROOT` - путь к директории хранения (по умолчанию: `storage`)
 - `APP_MAX_REPORTS` - максимальное количество хранимых отчетов (по умолчанию: `10`)
+- `APP_MAX_UPLOAD_SIZE_MB` - максимальный размер загружаемого ZIP (по умолчанию: `512`)
+- `APP_HISTORY_MAX_FILE_SIZE_MB` - максимальный размер `history.jsonl` (по умолчанию: `100`)
+- `APP_MAX_INDEXED_RUNS` - сколько последних прогонов держать в индексе истории (по умолчанию: `1000`)
+- `APP_CORS_ORIGINS` - разрешенные origin через запятую, если UI и backend на разных хостах
 
 Поведение ротации:
 - После загрузки нового отчета, если общее количество превышает `APP_MAX_REPORTS`,
