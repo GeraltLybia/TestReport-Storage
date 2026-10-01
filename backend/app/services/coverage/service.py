@@ -72,6 +72,53 @@ class CoverageService:
         return {"message": "Measurement deleted"}
 
     # ─── calculation ───
+    def _compute(self, kind: str, spec_bytes: bytes, report_ids: list[str], params: dict) -> tuple[dict, dict]:
+        text = spec_bytes.decode("utf-8", errors="replace")
+        try:
+            if kind == "rest":
+                try:
+                    document = json.loads(text)
+                except ValueError as exc:
+                    raise SpecError("Ожидается openapi.json (JSON)") from exc
+                spec = load_rest_spec(
+                    document,
+                    base_path_override=params.get("basePath") or None,
+                    host_override=params.get("host") or None,
+                )
+                coverage = RestCoverage(spec)
+                spec_info = {"title": spec.title, "version": spec.version, "basePath": spec.base_path,
+                             "serverHosts": sorted(spec.server_hosts)}
+            else:
+                schema = load_schema(text)
+                coverage = GraphqlCoverage(schema, endpoint=params.get("endpoint") or None)
+                spec_info = {"endpoint": params.get("endpoint") or None}
+        except (SpecError, SchemaError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        tests_with_logs = 0
+        for report_id in report_ids:
+            for log in iter_report_test_logs(self.reports, report_id):
+                tests_with_logs += 1
+                parsed = parse_log(log.text)
+                test_key = f"{report_id}:{log.test_id}"
+                test = {"name": log.name, "fullName": log.full_name, "reportId": report_id, "testId": log.test_id}
+                if kind == "rest":
+                    for call in parsed.rest:
+                        coverage.add_call(call.method, call.url, call.status, test_key, test)
+                else:
+                    for call in parsed.graphql:
+                        coverage.add_call(call.url, call.query, test_key, test)
+
+        result = coverage.result(total_tests=tests_with_logs)
+        if kind == "rest":
+            spec_info["hosts"] = result["spec"]["hosts"]
+        return result, spec_info
+
+    @staticmethod
+    def _write(target: Path, meta: dict, result: dict) -> None:
+        (target / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        (target / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
     def create_measurement(
         self,
         *,
@@ -97,47 +144,17 @@ class CoverageService:
         if unknown:
             raise HTTPException(status_code=404, detail=f"Отчёты не найдены: {', '.join(unknown)}")
 
-        text = spec_bytes.decode("utf-8", errors="replace")
-        spec_info: dict
-        try:
-            if kind == "rest":
-                try:
-                    document = json.loads(text)
-                except ValueError as exc:
-                    raise SpecError("Ожидается openapi.json (JSON)") from exc
-                spec = load_rest_spec(document, base_path_override=base_path or None, host_override=host or None)
-                coverage = RestCoverage(spec)
-                spec_info = {"title": spec.title, "version": spec.version, "basePath": spec.base_path,
-                             "hosts": sorted(spec.hosts)}
-            else:
-                schema = load_schema(text)
-                coverage = GraphqlCoverage(schema, endpoint=endpoint or None)
-                spec_info = {"endpoint": endpoint or None}
-        except (SpecError, SchemaError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        params = {"basePath": base_path or None, "host": host or None, "endpoint": endpoint or None}
+        result, spec_info = self._compute(kind, spec_bytes, report_ids, params)
 
         report_entries = {entry.id: entry for entry in self.reports.list_report_entries()}
-        tests_with_logs = 0
-        for report_id in report_ids:
-            for log in iter_report_test_logs(self.reports, report_id):
-                tests_with_logs += 1
-                parsed = parse_log(log.text)
-                test_key = f"{report_id}:{log.test_id}"
-                test = {"name": log.name, "fullName": log.full_name, "reportId": report_id, "testId": log.test_id}
-                if kind == "rest":
-                    for call in parsed.rest:
-                        coverage.add_call(call.method, call.url, call.status, test_key, test)
-                else:
-                    for call in parsed.graphql:
-                        coverage.add_call(call.url, call.query, test_key, test)
-
-        result = coverage.result(total_tests=tests_with_logs)
         measurement_id = str(uuid.uuid4())
         meta = {
             "id": measurement_id,
             "name": name.strip() or spec_filename,
             "kind": kind,
             "createdAt": _now(),
+            "params": params,
             "spec": {"filename": spec_filename, "size": len(spec_bytes), **spec_info},
             "reports": [
                 {"id": report_id, "name": report_entries[report_id].name if report_id in report_entries else report_id}
@@ -150,7 +167,32 @@ class CoverageService:
         target.mkdir(parents=True)
         suffix = Path(spec_filename).suffix.lower() if re.fullmatch(r"\.[a-z0-9]{1,10}", Path(spec_filename).suffix.lower()) else ".txt"
         (target / f"spec{suffix}").write_bytes(spec_bytes)
-        (target / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        (target / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+        self._write(target, meta, result)
         logger.info("Coverage measurement %s created: kind=%s reports=%s", measurement_id, kind, len(report_ids))
+        return {**meta, "result": result}
+
+    def recalculate_measurement(self, measurement_id: str) -> dict:
+        """Re-runs a measurement with its stored spec and parameters (after a fix in parsing/matching).
+
+        Reports deleted since then are skipped and listed in `missingReports`.
+        """
+        target = self._measurement_dir(measurement_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Measurement not found")
+        meta = json.loads((target / "meta.json").read_text(encoding="utf-8"))
+        spec_files = sorted(target.glob("spec.*"))
+        if not spec_files:
+            raise HTTPException(status_code=409, detail="Файл спецификации измерения не найден")
+        report_ids = [item["id"] for item in meta.get("reports", [])]
+        available = [report_id for report_id in report_ids if self.reports.report_exists(report_id)]
+        params = meta.get("params") or {"basePath": None, "host": None, "endpoint": meta.get("spec", {}).get("endpoint")}
+        result, spec_info = self._compute(meta["kind"], spec_files[0].read_bytes(), available, params)
+        meta.update(
+            params=params,
+            spec={**meta.get("spec", {}), **spec_info},
+            summary=result["summary"],
+            recalculatedAt=_now(),
+            missingReports=[report_id for report_id in report_ids if report_id not in available],
+        )
+        self._write(target, meta, result)
         return {**meta, "result": result}

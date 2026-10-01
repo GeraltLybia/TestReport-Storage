@@ -53,3 +53,12 @@ def get_measurement(measurement_id: str, service: CoverageService = Depends(get_
 @router.delete("/{measurement_id}", response_model=MessageResponse, summary="Удалить измерение")
 def delete_measurement(measurement_id: str, service: CoverageService = Depends(get_coverage_service)):
     return service.delete_measurement(measurement_id)
+
+
+@router.post(
+    "/{measurement_id}/recalculate",
+    summary="Пересчитать измерение",
+    description="Пересчитывает покрытие с сохранённой спецификацией и параметрами по тем же отчётам.",
+)
+def recalculate_measurement(measurement_id: str, service: CoverageService = Depends(get_coverage_service)):
+    return service.recalculate_measurement(measurement_id)

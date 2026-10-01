@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 
 import GraphqlCoverage from '../../components/common/coverage/GraphqlCoverage.vue'
 import RestCoverage from '../../components/common/coverage/RestCoverage.vue'
-import { fetchCoverageMeasurement } from '../../api/coverage'
+import { fetchCoverageMeasurement, recalculateCoverageMeasurement } from '../../api/coverage'
 import { formatDate } from '../../utils/reports'
 import type { CoverageMeasurement } from '../../types/coverage'
 
@@ -34,12 +34,25 @@ async function load() {
 
 watch(measurementId, () => void load(), { immediate: true })
 
+const recalculating = ref(false)
+async function recalculate() {
+  recalculating.value = true
+  error.value = null
+  try {
+    measurement.value = await recalculateCoverageMeasurement(measurementId.value)
+  } catch (exception) {
+    error.value = exception instanceof Error ? exception.message : 'Не удалось пересчитать измерение'
+  } finally {
+    recalculating.value = false
+  }
+}
+
 const specLine = computed(() => {
   const m = measurement.value
   if (!m) return ''
   if (m.kind === 'rest') {
     const title = [m.spec.title, m.spec.version].filter(Boolean).join(' ')
-    return [title || m.spec.filename, m.spec.basePath, ...(m.spec.hosts ?? [])].filter(Boolean).join(' · ')
+    return [title || m.spec.filename, m.spec.basePath].filter(Boolean).join(' · ')
   }
   return [m.spec.filename, m.spec.endpoint].filter(Boolean).join(' · ')
 })
@@ -63,8 +76,16 @@ const specLine = computed(() => {
             {{ formatDate(measurement.createdAt) }}
           </p>
         </div>
-        <RouterLink class="cov-ghost" :to="{ name: 'coverage' }">Все измерения</RouterLink>
+        <div class="cov-head-actions">
+          <button type="button" class="cov-ghost" :disabled="recalculating" @click="recalculate()">
+            {{ recalculating ? 'Пересчёт…' : 'Пересчитать' }}
+          </button>
+          <RouterLink class="cov-ghost" :to="{ name: 'coverage' }">Все измерения</RouterLink>
+        </div>
       </header>
+      <p v-if="measurement.missingReports?.length" class="cov-hint">
+        {{ measurement.missingReports.length }} отчёт(а) из измерения уже удалены и не учтены при пересчёте.
+      </p>
 
       <details class="cov-card cov-reports-used">
         <summary>Отчёты в измерении</summary>

@@ -40,7 +40,12 @@ class RestSpec:
     title: str
     version: str
     base_path: str
-    hosts: set[str]
+    # Hosts from `servers` / `host`: informational only. Generators such as
+    # springdoc write the host the spec was downloaded from ("Generated server
+    # url"), which rarely matches the stand the tests ran against.
+    server_hosts: set[str]
+    # Explicit filter set by the user; empty means "detect from matches".
+    filter_hosts: set[str]
     operations: list[Operation]
 
 
@@ -84,8 +89,7 @@ def load_rest_spec(document: dict, base_path_override: str | None = None, host_o
 
     if base_path_override is not None:
         base_path = _normalize_base(base_path_override)
-    if host_override:
-        hosts = {host_override.strip()}
+    filter_hosts = {item.strip() for item in (host_override or "").split(",") if item.strip()}
 
     operations = []
     for path, item in document["paths"].items():
@@ -115,7 +119,8 @@ def load_rest_spec(document: dict, base_path_override: str | None = None, host_o
         title=str(info.get("title") or "API"),
         version=str(info.get("version") or ""),
         base_path=base_path,
-        hosts=hosts,
+        server_hosts=hosts,
+        filter_hosts=filter_hosts,
         operations=operations,
     )
 
@@ -138,6 +143,15 @@ def _generalize_path(path: str) -> str:
 
 
 class RestCoverage:
+    """Collects calls and maps them onto operations.
+
+    Without an explicit host filter the service's hosts are detected from the
+    calls themselves: a host belongs to the service if at least one of its
+    calls matched an operation. Only unmatched calls from such hosts are
+    reported as "outside the spec", so other services in the same log
+    (another port, another API) do not pollute the result.
+    """
+
     def __init__(self, spec: RestSpec):
         self.spec = spec
         self.by_method: dict[str, list[Operation]] = defaultdict(list)
@@ -145,40 +159,52 @@ class RestCoverage:
             self.by_method[operation.method].append(operation)
         for operations in self.by_method.values():
             operations.sort(key=lambda op: -op.literal_segments)
-        self.unknown: dict[tuple[str, str], Counter] = defaultdict(Counter)
-        self.total_calls = 0
+        self.unmatched: list[tuple[str, str, str, str]] = []  # host, method, generalized path, status
+        self.host_calls: Counter = Counter()
+        self.matched_hosts: set[str] = set()
         self.matched_calls = 0
         self.tests_with_calls: set[str] = set()
 
-    def _relative_path(self, url: str) -> tuple[str | None, str]:
-        parts = urlsplit(url)
-        if self.spec.hosts and parts.netloc and parts.netloc not in self.spec.hosts:
-            return None, parts.path
-        path = parts.path or "/"
+    def _relative_path(self, path: str) -> str | None:
+        path = path or "/"
         base = self.spec.base_path
-        if base:
-            if path == base or path.startswith(base + "/"):
-                return path[len(base) :] or "/", path
-            return None, path
-        return path, path
+        if not base:
+            return path
+        if path == base or path.startswith(base + "/"):
+            return path[len(base) :] or "/"
+        return None
 
     def add_call(self, method: str, url: str, status: str | None, test_key: str, test: dict) -> None:
-        relative, full_path = self._relative_path(url)
-        if relative is None:
-            return  # another service
-        self.total_calls += 1
-        self.tests_with_calls.add(test_key)
-        for operation in self.by_method.get(method.upper(), []):
-            if operation.pattern.match(relative):
-                operation.calls += 1
-                operation.status_calls[status or "?"] += 1
-                if test_key not in operation.tests and len(operation.tests) < MAX_TESTS_PER_OPERATION:
-                    operation.tests[test_key] = test
-                self.matched_calls += 1
-                return
-        self.unknown[(method.upper(), _generalize_path(full_path))][status or "?"] += 1
+        parts = urlsplit(url)
+        host = parts.netloc
+        if self.spec.filter_hosts and host not in self.spec.filter_hosts:
+            return  # explicitly excluded service
+        self.host_calls[host] += 1
+        relative = self._relative_path(parts.path)
+        if relative is not None:
+            for operation in self.by_method.get(method.upper(), []):
+                if operation.pattern.match(relative):
+                    operation.calls += 1
+                    operation.status_calls[status or "?"] += 1
+                    if test_key not in operation.tests and len(operation.tests) < MAX_TESTS_PER_OPERATION:
+                        operation.tests[test_key] = test
+                    self.matched_calls += 1
+                    self.matched_hosts.add(host)
+                    self.tests_with_calls.add(test_key)
+                    return
+        self.unmatched.append((host, method.upper(), _generalize_path(parts.path or "/"), status or "?"))
+
+    def service_hosts(self) -> set[str]:
+        return set(self.spec.filter_hosts) if self.spec.filter_hosts else set(self.matched_hosts)
 
     def result(self, total_tests: int) -> dict:
+        service_hosts = self.service_hosts()
+        unknown_counter: dict[tuple[str, str], Counter] = defaultdict(Counter)
+        for host, method, path, status in self.unmatched:
+            if host in service_hosts:
+                unknown_counter[(method, path)][status] += 1
+        total_calls = sum(count for host, count in self.host_calls.items() if host in service_hosts)
+
         operations = []
         documented_codes = covered_codes = 0
         for op in self.spec.operations:
@@ -215,17 +241,28 @@ class RestCoverage:
         covered_operations = sum(1 for op in operations if op["calls"])
         unknown = [
             {"method": method, "path": path, "calls": sum(statuses.values()), "codes": sorted(statuses)}
-            for (method, path), statuses in sorted(self.unknown.items(), key=lambda item: -sum(item[1].values()))
+            for (method, path), statuses in sorted(unknown_counter.items(), key=lambda item: -sum(item[1].values()))
         ]
+        other_hosts = {
+            host: count for host, count in self.host_calls.items() if host not in service_hosts
+        }
         return {
             "kind": "rest",
-            "spec": {"title": self.spec.title, "version": self.spec.version, "basePath": self.spec.base_path, "hosts": sorted(self.spec.hosts)},
+            "spec": {
+                "title": self.spec.title,
+                "version": self.spec.version,
+                "basePath": self.spec.base_path,
+                "serverHosts": sorted(self.spec.server_hosts),
+                "hosts": sorted(service_hosts),
+                "hostFilter": sorted(self.spec.filter_hosts),
+                "otherHosts": [{"host": host, "calls": count} for host, count in sorted(other_hosts.items(), key=lambda item: -item[1])],
+            },
             "summary": {
                 "operations": len(operations),
                 "coveredOperations": covered_operations,
                 "codes": documented_codes,
                 "coveredCodes": covered_codes,
-                "calls": self.total_calls,
+                "calls": total_calls,
                 "matchedCalls": self.matched_calls,
                 "unknownCalls": len(unknown),
                 "testsWithCalls": len(self.tests_with_calls),

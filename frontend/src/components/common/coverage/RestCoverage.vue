@@ -91,6 +91,20 @@ function codeClass(code: string, calls: number) {
     </article>
   </section>
 
+  <p class="cov-hint cov-hosts">
+    <template v-if="result.spec.hosts.length">
+      Учтены запросы к {{ result.spec.hostFilter?.length ? 'указанным хостам' : 'хостам сервиса' }}:
+      <span class="cov-mono">{{ result.spec.hosts.join(', ') }}</span>.
+    </template>
+    <template v-else>Ни один запрос из логов не совпал с операциями спецификации — проверьте base path и хост.</template>
+    <template v-if="result.spec.otherHosts?.length">
+      Не относятся к сервису:
+      <span v-for="(item, index) in result.spec.otherHosts" :key="item.host">
+        <span class="cov-mono">{{ item.host }}</span> ({{ item.calls }}){{ index < result.spec.otherHosts.length - 1 ? ', ' : '' }}
+      </span>.
+    </template>
+  </p>
+
   <div class="cov-split">
     <section class="cov-card cov-ops" aria-label="Операции">
       <div class="cov-toolbar">

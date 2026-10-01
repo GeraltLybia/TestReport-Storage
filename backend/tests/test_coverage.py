@@ -62,7 +62,7 @@ def test_rest_coverage_matches_templates_codes_and_unknown_calls():
     for call in parse_log(LOG).rest:
         coverage.add_call(call.method, call.url, call.status, "r:t1", test)
     coverage.add_call("GET", "http://h:4001/api/driver/v1/claim/42/files", "200", "r:t1", test)
-    coverage.add_call("GET", "http://other:18081/api/claims/1/history", "200", "r:t1", test)  # other host
+    coverage.add_call("GET", "http://other:18081/api/claims/1/history", "200", "r:t1", test)  # other service
 
     result = coverage.result(total_tests=1)
     ops = {op["id"]: op for op in result["operations"]}
@@ -147,6 +147,35 @@ def test_service_end_to_end_with_allure3_report_layout():
         create_op = next(op for op in created["result"]["operations"] if op["id"] == "POST /claim")
         assert create_op["tests"] == [{"name": "Создание претензии", "fullName": "Claims.Tests.mod#test_create", "reportId": report_id, "testId": "t1"}]
         assert [m["id"] for m in service.list_measurements()] == [created["id"]]
+        recalculated = service.recalculate_measurement(created["id"])
+        assert recalculated["summary"] == created["summary"] and recalculated["missingReports"] == []
         assert service.get_measurement(created["id"])["result"]["kind"] == "rest"
         service.delete_measurement(created["id"])
         assert service.list_measurements() == []
+
+
+def test_rest_ignores_generated_server_host_and_detects_service_hosts():
+    """springdoc writes the download host into servers; tests run against another stand."""
+    spec = dict(OPENAPI, servers=[{"url": "http://10.101.3.120:4002", "description": "Generated server url"}])
+    spec["paths"] = {"/api/driver/v1" + path: item for path, item in OPENAPI["paths"].items()}
+    coverage = RestCoverage(load_rest_spec(spec))
+    test = {"name": "t"}
+    coverage.add_call("POST", "http://stand:4002/api/driver/v1/claim", "200", "r:t1", test)
+    coverage.add_call("GET", "http://stand:4002/api/driver/v1/unknown/1", "200", "r:t1", test)
+    coverage.add_call("GET", "http://stand:18081/api/claims/1/history", "200", "r:t1", test)
+
+    result = coverage.result(total_tests=1)
+
+    assert next(op for op in result["operations"] if op["id"] == "POST /api/driver/v1/claim")["calls"] == 1
+    assert result["spec"]["hosts"] == ["stand:4002"]
+    assert result["spec"]["otherHosts"] == [{"host": "stand:18081", "calls": 1}]
+    assert [u["path"] for u in result["unknown"]] == ["/api/driver/v1/unknown/{id}"]
+    assert result["summary"]["calls"] == 2
+
+
+def test_explicit_host_filter_excludes_other_hosts():
+    coverage = RestCoverage(load_rest_spec(OPENAPI, host_override="h:4001"))
+    coverage.add_call("POST", "http://other:4001/api/driver/v1/claim", "200", "r:t1", {})
+    coverage.add_call("POST", "http://h:4001/api/driver/v1/claim", "200", "r:t1", {})
+    result = coverage.result(total_tests=1)
+    assert result["summary"]["matchedCalls"] == 1 and result["spec"]["hosts"] == ["h:4001"]

@@ -48,9 +48,13 @@ export type CoverageMeasurementMeta = {
     version?: string
     basePath?: string
     hosts?: string[]
+    serverHosts?: string[]
     endpoint?: string | null
   }
+  params?: { basePath: string | null; host: string | null; endpoint: string | null }
   reports: { id: string; name: string }[]
+  recalculatedAt?: string
+  missingReports?: string[]
   summary: RestCoverageSummary | GraphqlCoverageSummary
 }
 
@@ -68,7 +72,16 @@ export type RestOperation = {
 
 export type RestCoverageResult = {
   kind: 'rest'
-  spec: { title: string; version: string; basePath: string; hosts: string[] }
+  spec: {
+    title: string
+    version: string
+    basePath: string
+    /** Hosts the calls were counted from (explicit filter or detected from matches). */
+    hosts: string[]
+    serverHosts?: string[]
+    hostFilter?: string[]
+    otherHosts?: { host: string; calls: number }[]
+  }
   summary: RestCoverageSummary
   operations: RestOperation[]
   unknown: { method: string; path: string; calls: number; codes: string[] }[]

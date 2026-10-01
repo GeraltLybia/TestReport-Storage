@@ -15,6 +15,7 @@ const name = ref('')
 const specFile = ref<File | null>(null)
 const specSummary = ref<string | null>(null)
 const specError = ref<string | null>(null)
+const specServers = ref<string[]>([])
 const basePath = ref('')
 const host = ref('')
 const endpoint = ref('')
@@ -29,6 +30,7 @@ const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch', 'head', 'options'
 async function inspectSpec(file: File) {
   specSummary.value = null
   specError.value = null
+  specServers.value = []
   const text = await file.text()
   if (kind.value === 'rest') {
     try {
@@ -48,18 +50,20 @@ async function inspectSpec(file: File) {
       )
       const version = document.openapi ? `OpenAPI ${document.openapi}` : `Swagger ${document.swagger ?? ''}`
       specSummary.value = `${version} · ${document.info?.title ?? 'API'} ${document.info?.version ?? ''} · ${operations} операций`
+      // Hosts in `servers` are often the stand the spec was downloaded from
+      // (springdoc "Generated server url"), so they are shown, not used as a filter.
       const serverUrl = document.servers?.[0]?.url
+      specServers.value = (document.servers ?? []).map((server) => server.url ?? '').filter(Boolean)
       if (serverUrl) {
         try {
           const parsed = new URL(serverUrl, 'http://placeholder')
           basePath.value = parsed.pathname === '/' ? '' : parsed.pathname
-          host.value = parsed.host === 'placeholder' ? '' : parsed.host
         } catch {
           /* keep manual values */
         }
       } else if (document.basePath) {
         basePath.value = document.basePath
-        host.value = document.host ?? ''
+        if (document.host) specServers.value = [document.host]
       }
       if (!name.value) name.value = document.info?.title ?? ''
     } catch (exception) {
@@ -195,13 +199,20 @@ async function submit() {
           <div v-if="kind === 'rest'" class="cov-fields">
             <label>
               Хост сервиса
-              <input v-model="host" class="cov-input cov-mono" placeholder="host:4001 — пусто: любой хост" />
+              <input v-model="host" class="cov-input cov-mono" placeholder="пусто — определить по логам" />
             </label>
             <label>
               Base path
               <input v-model="basePath" class="cov-input cov-mono" placeholder="/api/driver/v1" />
             </label>
-            <p class="cov-hint">Запросы на другие хосты и пути вне base path в измерение не попадут.</p>
+            <p class="cov-hint">
+              Если хост не указан, сервис определяется по самим логам: учитываются хосты, у которых хотя бы один запрос
+              совпал с операцией спецификации. Несколько хостов — через запятую.
+              <template v-if="specServers.length">
+                В спецификации указан сервер <span class="cov-mono">{{ specServers.join(', ') }}</span> — он не
+                используется как фильтр.
+              </template>
+            </p>
           </div>
           <div v-else class="cov-fields">
             <label class="cov-fields-wide">

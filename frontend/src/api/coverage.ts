@@ -33,6 +33,12 @@ export async function createCoverageMeasurement(input: NewCoverageMeasurement) {
   return (await response.json()) as CoverageMeasurement
 }
 
+export async function recalculateCoverageMeasurement(id: string) {
+  const response = await fetch(`${API_BASE}/api/coverage/${encodeURIComponent(id)}/recalculate`, { method: 'POST' })
+  if (!response.ok) throw new Error(await errorMessage(response, 'Не удалось пересчитать измерение'))
+  return (await response.json()) as CoverageMeasurement
+}
+
 export async function deleteCoverageMeasurement(id: string) {
   const response = await fetch(`${API_BASE}/api/coverage/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (!response.ok) throw new Error(await errorMessage(response, 'Не удалось удалить измерение'))

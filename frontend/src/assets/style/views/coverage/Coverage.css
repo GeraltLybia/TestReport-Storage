@@ -133,6 +133,20 @@
   background: var(--surface-2);
 }
 
+.cov-ghost:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cov-head-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cov-hosts {
+  margin-top: -0.5rem;
+}
+
 .cov-link {
   padding: 0;
   border: 0;
