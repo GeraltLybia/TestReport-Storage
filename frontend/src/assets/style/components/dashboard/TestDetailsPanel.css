@@ -1,0 +1,248 @@
+/* Test details drawer. Teleported to <body> and reused outside the dashboard
+   (report and run results), so it carries its own styles. */
+
+.drawer-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--scrim);
+  animation: drawer-fade-in var(--dur-fast) var(--ease-apple) both;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(37.5rem, 100%);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: drawer-in var(--dur-base) var(--ease-apple) both;
+}
+
+.drawer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.drawer-module {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-3);
+  word-break: break-all;
+}
+
+.drawer-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.25rem 1.5rem 1.75rem;
+}
+
+.drawer-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+}
+
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.mini-stat > span:first-child {
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+.mini-stat strong {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.drawer-section h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.duration-chart {
+  display: grid;
+  gap: 0.5rem;
+  align-items: end;
+  height: 9rem;
+  padding: 0 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.duration-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  height: 100%;
+  min-width: 0;
+}
+
+.duration-value {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-2);
+}
+
+.duration-bar {
+  display: block;
+  width: 100%;
+  max-width: 2.75rem;
+  max-height: calc(100% - 1.25rem);
+  border-radius: 5px 5px 0 0;
+  background: var(--bar-skipped);
+}
+
+.duration-bar--passed {
+  background: var(--bar-passed);
+}
+
+.duration-bar--failed {
+  background: var(--bar-failed);
+}
+
+.duration-bar--broken {
+  background: var(--bar-broken);
+}
+
+.history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.history-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.history-date {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.history-duration {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.history-message {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  max-height: 9rem;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-2);
+}
+
+.history-message--failed {
+  color: var(--danger);
+}
+
+.history-message--broken {
+  color: var(--warning);
+}
+
+@keyframes drawer-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(2rem);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .drawer-backdrop {
+    animation: none;
+  }
+}
+
+.drawer-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
+.drawer-error {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 9px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.82rem;
+}

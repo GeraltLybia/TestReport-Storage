@@ -106,7 +106,7 @@ onBeforeUnmount(() => {
 
           <section class="drawer-section" aria-label="История запусков">
             <h3>История запусков</h3>
-            <p v-if="selectedTestDetails.totalRuns > entries.length" class="panel-hint">
+            <p v-if="selectedTestDetails.totalRuns > entries.length" class="drawer-hint">
               Показаны последние {{ entries.length }} из {{ selectedTestDetails.totalRuns }}
             </p>
             <article v-for="entry in entries" :key="entry.key" class="history-card">
@@ -124,3 +124,5 @@ onBeforeUnmount(() => {
     </div>
   </Teleport>
 </template>
+
+<style src="../../../../assets/style/components/dashboard/TestDetailsPanel.css"></style>

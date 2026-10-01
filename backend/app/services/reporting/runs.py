@@ -11,12 +11,79 @@ INCIDENT_STATUSES = {"failed", "broken"}
 STATUS_ORDER = {"failed": 0, "broken": 1, "unknown": 2, "skipped": 3, "passed": 4}
 
 
-def matches_status_filter(status: str, status_filter: str | None) -> bool:
+CHANGE_KINDS = ("new_failure", "still_failing", "fixed", "new_test")
+
+
+def matches_status_filter(status: str, status_filter: str | None, change: str | None = None) -> bool:
     if not status_filter or status_filter == "all":
         return True
     if status_filter == "incidents":
         return status in INCIDENT_STATUSES
+    if status_filter == "changes":
+        return change in {"new_failure", "fixed"} or (change == "new_test" and status in INCIDENT_STATUSES)
     return status == status_filter
+
+
+def _result_moment(result: HistoryResultRecord) -> int:
+    return result.stop or result.start or result.timestamp or 0
+
+
+def build_previous_lookup(index: HistoryIndexData) -> dict[str, list[HistoryResultRecord]]:
+    """test_key -> its results ordered by time, for "what was it last time" questions."""
+    lookup: dict[str, list[HistoryResultRecord]] = {}
+    for result in index.results:
+        lookup.setdefault(result.test_key, []).append(result)
+    for results in lookup.values():
+        results.sort(key=_result_moment)
+    return lookup
+
+
+def annotate_changes(
+    items: list[dict],
+    lookup: dict[str, list[HistoryResultRecord]],
+    before: int,
+    exclude_run: str | None = None,
+) -> dict:
+    """Compares every item with the previous result of the same test before `before`.
+
+    Sets `previous` and `change` on each item (new_failure / still_failing / fixed /
+    new_test / None) and returns the counters.
+    """
+    counters = {"newFailures": 0, "stillFailing": 0, "fixed": 0, "newTests": 0}
+    for item in items:
+        previous = None
+        for result in reversed(lookup.get(item["testKey"], [])):
+            if result.run_uuid != exclude_run and _result_moment(result) < before:
+                previous = result
+                break
+        now_incident = item["status"] in INCIDENT_STATUSES
+        if previous is None:
+            change = "new_test"
+            counters["newTests"] += 1
+        else:
+            was_incident = normalize_status(previous.status) in INCIDENT_STATUSES
+            if now_incident and was_incident:
+                change, key = "still_failing", "stillFailing"
+            elif now_incident:
+                change, key = "new_failure", "newFailures"
+            elif was_incident and item["status"] == "passed":
+                change, key = "fixed", "fixed"
+            else:
+                change, key = None, None
+            if key:
+                counters[key] += 1
+        item["change"] = change
+        item["previous"] = (
+            {
+                "status": normalize_status(previous.status),
+                "runName": previous.run_name,
+                "runUuid": previous.run_uuid,
+                "at": _result_moment(previous),
+            }
+            if previous
+            else None
+        )
+    return counters
 
 
 def resolve_run_status(passed: int, failed: int, broken: int, total: int) -> str:
@@ -114,11 +181,14 @@ def list_runs(
 
 
 def to_result_item(result: HistoryResultRecord) -> dict:
+    status = normalize_status(result.status)
     return {
         "id": result.test_key,
+        "testKey": result.test_key,
+        "signature": result.signature if status in INCIDENT_STATUSES else None,
         "name": result.name or result.test_key,
         "fullName": result.test_key,
-        "status": normalize_status(result.status),
+        "status": status,
         "duration": result.duration,
         "message": result.message,
         "suite": result.suite or None,
@@ -126,8 +196,15 @@ def to_result_item(result: HistoryResultRecord) -> dict:
     }
 
 
+CHANGE_ORDER = {"new_failure": 0, "new_test": 1, "still_failing": 2, "fixed": 3}
+
+
 def sort_results(items: list[dict]) -> list[dict]:
-    return sorted(items, key=lambda item: (STATUS_ORDER.get(item["status"], 2), item["name"]))
+    """Failures first, and among them the ones that broke in this run first."""
+    return sorted(
+        items,
+        key=lambda item: (STATUS_ORDER.get(item["status"], 2), CHANGE_ORDER.get(item.get("change"), 4), item["name"]),
+    )
 
 
 def get_run_results(
@@ -140,11 +217,11 @@ def get_run_results(
     summary = next((item for item in build_run_summaries(index) if item["uuid"] == run_uuid), None)
     if summary is None:
         return None
-    items = sort_results(
-        [
-            to_result_item(result)
-            for result in index.results
-            if result.run_uuid == run_uuid and matches_status_filter(normalize_status(result.status), status)
-        ]
+    all_items = [to_result_item(result) for result in index.results if result.run_uuid == run_uuid]
+    run_start = min(
+        (result.start or result.stop or result.timestamp for result in index.results if result.run_uuid == run_uuid),
+        default=summary["timestamp"],
     )
-    return {"run": summary, "total": len(items), "items": items[offset : offset + limit]}
+    changes = annotate_changes(all_items, build_previous_lookup(index), before=run_start, exclude_run=run_uuid)
+    items = sort_results([item for item in all_items if matches_status_filter(item["status"], status, item["change"])])
+    return {"run": summary, "total": len(items), "items": items[offset : offset + limit], "changes": changes}

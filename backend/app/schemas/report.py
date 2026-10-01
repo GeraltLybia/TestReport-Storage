@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from .history import TestResultItem
+from .history import ResultChanges, TestResultItem
 
 
 class ReportStats(BaseModel):
@@ -36,3 +36,4 @@ class MessageResponse(BaseModel):
 class ReportResults(BaseModel):
     total: int
     items: list[TestResultItem]
+    changes: ResultChanges | None = None

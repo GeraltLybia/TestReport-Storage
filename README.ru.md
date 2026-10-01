@@ -85,7 +85,7 @@ Frontend dev server: `http://localhost:5173`
 - `POST /api/reports/upload` - загрузить новый Allure-отчет в виде `ZIP`-архива (`multipart/form-data`, поле `file`)
 - `GET /api/reports/{report_id}/download` - скачать конкретный отчет как `ZIP`-архив
 - `DELETE /api/reports/{report_id}` - удалить отчет по его идентификатору
-- `GET /api/reports/{report_id}/results?status=incidents|all|failed|broken|passed` - результаты тестов отчета из его Allure-данных (по умолчанию только failed и broken)
+- `GET /api/reports/{report_id}/results?status=incidents|changes|all|failed|broken|passed` - результаты тестов отчета из его Allure-данных (по умолчанию только failed и broken). Каждый результат сравнивается с предыдущим запуском теста в истории (`change`: `new_failure` / `still_failing` / `fixed` / `new_test`, `previous`), счетчики — в `changes`; `status=changes` оставляет новые падения и починенные тесты
 
 ## History API
 - `GET /api/history` - скачать текущий `history.jsonl`
@@ -94,7 +94,7 @@ Frontend dev server: `http://localhost:5173`
 - `GET /api/history/dashboard` - получить агрегаты dashboard без скачивания всего файла
 - `GET /api/history/dashboard/tests/{test_key}` - получить детали выбранного теста для dashboard
 - `GET /api/history/runs?search=&status=&limit=&offset=` - постраничный список прогонов из history index
-- `GET /api/history/runs/{run_uuid}/results?status=incidents|all|...` - результаты тестов прогона
+- `GET /api/history/runs/{run_uuid}/results?status=incidents|changes|all|...` - результаты тестов прогона со сравнением с предыдущим запуском
 - `POST /api/history/rebuild-index` - принудительно полностью перечитать `history.jsonl` и пересобрать `history_index.json`
 
 ## Coverage API

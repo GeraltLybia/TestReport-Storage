@@ -158,7 +158,7 @@ def list_history_runs(
 )
 def get_history_run_results(
     run_uuid: str,
-    status: str = Query(default="incidents", pattern="^(all|incidents|failed|broken|passed)$"),
+    status: str = Query(default="incidents", pattern="^(all|incidents|changes|failed|broken|passed)$"),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     service: HistoryService = Depends(get_history_service),

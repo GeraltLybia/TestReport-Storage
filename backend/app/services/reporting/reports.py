@@ -9,7 +9,8 @@ from .common import safe_extract_zip
 from .context import StorageContext
 from .models import ReportEntry
 from .repositories import ReportsRepository
-from .runs import matches_status_filter, sort_results
+from .history_index import HistoryIndexService
+from .runs import INCIDENT_STATUSES, matches_status_filter, sort_results
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,22 @@ class ReportStorageService:
             raise HTTPException(status_code=404, detail="Report not found")
         return self.repository.create_archive(report_id)
 
-    def get_report_results(self, report_id: str, status: str | None = "incidents") -> dict:
+    def get_report_results(self, report_id: str, status: str | None = "incidents", history=None) -> dict:
+        """Results of the report; with `history` (HistoryService) each test is compared
+        with its previous result in history.jsonl (new failure / still failing / fixed)."""
         results = self.repository.read_report_results(report_id)
         if results is None:
             raise HTTPException(status_code=404, detail="Report not found")
-        items = sort_results([item for item in results if matches_status_filter(item["status"], status)])
-        return {"total": len(items), "items": items}
+        for item in results:
+            item["signature"] = (
+                HistoryIndexService.build_signature({"message": item["message"]})
+                if item["status"] in INCIDENT_STATUSES
+                else None
+            )
+        changes = history.annotate_changes(results) if history is not None else None
+        items = sort_results(
+            [item for item in results if matches_status_filter(item["status"], status, item.get("change"))]
+        )
+        for item in items:
+            item.pop("start", None)
+        return {"total": len(items), "items": items, "changes": changes}
