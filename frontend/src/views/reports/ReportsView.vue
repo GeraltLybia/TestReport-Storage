@@ -2,11 +2,9 @@
 import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import AppHeader from '../../components/common/reports/AppHeader.vue'
 import ReportsSidebar from '../../components/common/reports/ReportsSidebar.vue'
 import ReportViewer from '../../components/common/reports/ReportViewer.vue'
 import { useReports } from '../../composables/useReports'
-import { useTheme } from '../../composables/useTheme'
 
 const {
   downloadHistory,
@@ -14,21 +12,18 @@ const {
   handleDeleteReport,
   handleDownloadReport,
   handleHistoryUpload,
-  handleUploadReport,
   historyInfo,
   loading,
   loadReports,
   reports,
   reportsLoaded,
+  selectedReport,
   setSidebarCollapsed,
   selectedReportId,
   sidebarCollapsed,
-  sidebarVisible,
-  uploading,
   viewerSrc,
 } = useReports()
 
-const { theme, toggleTheme } = useTheme()
 const route = useRoute()
 const router = useRouter()
 
@@ -43,12 +38,6 @@ function openReport(id: string) {
     router.push({ name: 'report-by-id', params: { reportId: id } })
   }
 }
-
-watch(selectedReportId, (id) => {
-  if (id && routeReportId.value !== id) {
-    router.push({ name: 'report-by-id', params: { reportId: id } })
-  }
-})
 
 watch(selectedReportId, (id) => {
   if (id && routeReportId.value !== id) {
@@ -97,29 +86,20 @@ watch(
 
 <template>
   <div class="reports-view">
-    <AppHeader
-      :sidebar-visible="sidebarVisible"
-      :theme="theme"
-      :uploading="uploading"
-      @toggle-sidebar="sidebarVisible = !sidebarVisible"
-      @toggle-theme="toggleTheme"
-      @upload-report="handleUploadReport"
-    />
+    <header class="reports-head">
+      <div>
+        <h1>Отчёты</h1>
+        <p>{{ reports.length }} Allure-отчётов в хранилище</p>
+      </div>
+    </header>
 
     <div v-if="error" class="reports-view-error" role="alert">
       <p>{{ error }}</p>
       <button type="button" class="text-button" @click="loadReports()">Повторить</button>
     </div>
 
-    <main
-      class="reports-view-main"
-      :class="{
-        'reports-view-main--no-sidebar': !sidebarVisible,
-        'reports-view-main--collapsed': sidebarVisible && sidebarCollapsed,
-      }"
-    >
+    <main class="reports-view-main" :class="{ 'reports-view-main--collapsed': sidebarCollapsed }">
       <ReportsSidebar
-        v-if="sidebarVisible"
         :collapsed="sidebarCollapsed"
         :loading="loading"
         :reports="reports"
@@ -129,13 +109,16 @@ watch(
         @collapse="setSidebarCollapsed(true)"
         @expand="setSidebarCollapsed(false)"
         @select-report="openReport"
-        @download-report="handleDownloadReport"
-        @delete-report="handleDeleteReport"
         @download-history="downloadHistory"
         @upload-history="handleHistoryUpload"
       />
 
-      <ReportViewer :sidebar-visible="sidebarVisible" :viewer-src="viewerSrc" @show-sidebar="sidebarVisible = true" />
+      <ReportViewer
+        :report="selectedReport"
+        :viewer-src="viewerSrc"
+        @download="handleDownloadReport"
+        @delete="handleDeleteReport"
+      />
     </main>
   </div>
 </template>

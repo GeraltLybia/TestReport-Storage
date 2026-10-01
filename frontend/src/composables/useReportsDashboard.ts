@@ -255,10 +255,10 @@ export function useReportsDashboard(props: { reports: Report[]; selectedReportId
   const stabilityDialog = computed(() => {
     if (!activeStabilityBucket.value) return null
     const titles: Record<StabilityBucketKey, string> = {
-      flaky: 'Flaky tests',
-      alwaysFailed: 'Always failed',
-      alwaysPassed: 'Always passed',
-      incidents: 'Incidents',
+      flaky: 'Нестабильные тесты',
+      alwaysFailed: 'Всегда падают',
+      alwaysPassed: 'Всегда проходят',
+      incidents: 'Инциденты',
     }
     const items = dashboardData.value?.stabilityDetails?.[activeStabilityBucket.value] ?? []
     return {
@@ -287,6 +287,7 @@ export function useReportsDashboard(props: { reports: Report[]; selectedReportId
         report,
         incidents: (report.stats?.failed ?? 0) + (report.stats?.broken ?? 0),
       }))
+      .filter((item) => item.incidents > 0)
       .sort(
         (left, right) =>
           right.incidents - left.incidents ||
@@ -359,6 +360,11 @@ export function useReportsDashboard(props: { reports: Report[]; selectedReportId
     },
     setStabilitySearch: (value: string) => {
       stabilitySearch.value = value
+    },
+    closeTestDetails: () => {
+      selectedTestKey.value = null
+      selectedTestDetails.value = null
+      testDetailsRequestToken += 1
     },
     selectTest: async (key: string) => {
       selectedTestKey.value = key

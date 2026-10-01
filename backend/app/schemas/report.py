@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from .history import TestResultItem
+
 
 class ReportStats(BaseModel):
     total: int = 0
@@ -29,3 +31,8 @@ class UploadResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class ReportResults(BaseModel):
+    total: int
+    items: list[TestResultItem]

@@ -110,6 +110,8 @@ export type HistoryUnstableTest = {
   failedRuns: number
   brokenRuns: number
   lastStatus: string
+  /** Latest statuses, oldest first (up to 10). */
+  recentStatuses?: string[]
 }
 
 export type HistoryStabilityDetailItem = {
@@ -177,4 +179,51 @@ export type HistoryDashboardSummary = {
   topUnstableTests: HistoryUnstableTest[]
   failureSignatures: HistoryFailureSignature[]
   tagHealth: HistoryTagHealth[]
+}
+
+export type TestResultItem = {
+  id: string
+  name: string
+  fullName?: string | null
+  status: string
+  duration?: number | null
+  message?: string | null
+  suite?: string | null
+  tags?: string[]
+}
+
+/** `incidents` = failed + broken. */
+export type ResultStatusFilter = 'incidents' | 'all'
+
+export type HistoryRunSummary = {
+  uuid: string
+  name: string
+  timestamp: number
+  total: number
+  passed: number
+  failed: number
+  broken: number
+  other: number
+  duration: number | null
+  passRate: number
+  status: string
+}
+
+export type RunStatusFilter = 'all' | 'failed' | 'broken' | 'passed'
+
+export type HistoryRunList = {
+  total: number
+  counts: Record<RunStatusFilter, number>
+  items: HistoryRunSummary[]
+}
+
+export type HistoryRunResults = {
+  run: HistoryRunSummary
+  total: number
+  items: TestResultItem[]
+}
+
+export type ReportResults = {
+  total: number
+  items: TestResultItem[]
 }

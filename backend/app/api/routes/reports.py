@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from ...dependencies import get_report_storage_service
-from ...schemas.report import MessageResponse, ReportItem, UploadResponse
+from ...schemas.report import MessageResponse, ReportItem, ReportResults, UploadResponse
 from ...services.reporting import ReportStorageService
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -71,3 +71,18 @@ def download_report(
         media_type="application/zip",
         background=BackgroundTask(zip_path.unlink, missing_ok=True),
     )
+
+
+@router.get(
+    "/{report_id}/results",
+    response_model=ReportResults,
+    summary="Результаты тестов отчета",
+    description="Результаты тестов из данных загруженного Allure-отчета; по умолчанию только failed и broken.",
+    responses={404: {"description": "Отчет не найден"}},
+)
+def get_report_results(
+    report_id: str,
+    status: str = Query(default="incidents", pattern="^(all|incidents|failed|broken|passed)$"),
+    service: ReportStorageService = Depends(get_report_storage_service),
+):
+    return service.get_report_results(report_id, status=status)

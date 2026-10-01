@@ -1,0 +1,156 @@
+/* Shared UI primitives used across pages. */
+
+.muted {
+  color: var(--text-3);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.align-end {
+  text-align: right;
+  justify-self: end;
+}
+
+.mono-strong {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.rate--failed,
+.tone-failed {
+  color: var(--danger);
+}
+
+.rate--broken,
+.tone-broken {
+  color: var(--warning);
+}
+
+.tone-passed {
+  color: var(--success);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-dot--passed {
+  background: var(--bar-passed);
+}
+
+.legend-dot--failed {
+  background: var(--bar-failed);
+}
+
+.legend-dot--broken {
+  background: var(--bar-broken);
+}
+
+.legend-dot--other {
+  background: var(--bar-skipped);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.status-pill--passed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.status-pill--failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.status-pill--broken {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.stack-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--track);
+}
+
+.stack-bar-seg--passed {
+  background: var(--bar-passed);
+}
+
+.stack-bar-seg--failed {
+  background: var(--bar-failed);
+}
+
+.stack-bar-seg--broken {
+  background: var(--bar-broken);
+}
+
+.meter {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--track);
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--bar-failed);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.icon-button--danger {
+  color: var(--danger);
+}
+
+.icon-button--danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}

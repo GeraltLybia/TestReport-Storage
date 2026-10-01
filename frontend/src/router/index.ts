@@ -23,6 +23,16 @@ const router = createRouter({
       component: () => import('../views/reports/ReportsView.vue'),
     },
     {
+      path: '/runs',
+      name: 'runs',
+      component: () => import('../views/runs/RunsView.vue'),
+    },
+    {
+      path: '/runs/:runId',
+      name: 'run-by-id',
+      component: () => import('../views/runs/RunsView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/dashboard',
     },

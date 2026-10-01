@@ -19,7 +19,6 @@ const reportsLoaded = ref(false)
 const uploading = ref(false)
 const error = ref<string | null>(null)
 const historyInfo = ref<HistoryInfo | null>(null)
-const sidebarVisible = ref(true)
 function readSidebarCollapsed() {
   try {
     return localStorage.getItem('allure-storage:reports-sidebar-collapsed') === '1'
@@ -162,7 +161,6 @@ export function useReports() {
     selectedReportId,
     setSidebarCollapsed,
     sidebarCollapsed,
-    sidebarVisible,
     uploading,
     viewerSrc,
   }

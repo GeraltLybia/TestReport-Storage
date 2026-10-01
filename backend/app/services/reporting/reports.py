@@ -9,6 +9,7 @@ from .common import safe_extract_zip
 from .context import StorageContext
 from .models import ReportEntry
 from .repositories import ReportsRepository
+from .runs import matches_status_filter, sort_results
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +104,10 @@ class ReportStorageService:
         if not self.repository.report_exists(report_id):
             raise HTTPException(status_code=404, detail="Report not found")
         return self.repository.create_archive(report_id)
+
+    def get_report_results(self, report_id: str, status: str | None = "incidents") -> dict:
+        results = self.repository.read_report_results(report_id)
+        if results is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        items = sort_results([item for item in results if matches_status_filter(item["status"], status)])
+        return {"total": len(items), "items": items}

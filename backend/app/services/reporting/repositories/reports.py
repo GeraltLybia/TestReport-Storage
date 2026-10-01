@@ -246,3 +246,72 @@ class ReportsRepository:
                 continue
 
         return ReportSummary()
+
+    def read_report_results(self, report_id: str) -> list[dict] | None:
+        """Test results of an uploaded Allure 3 report.
+
+        The list comes from `test-results.json`; error message and full name are
+        read from `data/test-results/<id>.json` only for failed/broken results,
+        so large green reports stay cheap. Returns None for an unknown report and
+        [] when the report carries no result data.
+        """
+        report_dir = self.resolve_report_dir(report_id)
+        if report_dir is None:
+            return None
+        report_root = self.resolve_report_root(report_dir)
+        if report_root is None:
+            return []
+
+        try:
+            payload = json.loads((report_root / "test-results.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        by_id = payload.get("byId") if isinstance(payload, dict) else None
+        if not isinstance(by_id, dict):
+            return []
+
+        details_dir = report_root / "data" / "test-results"
+        results: list[dict] = []
+        for result_id, item in by_id.items():
+            if not isinstance(item, dict):
+                continue
+            raw_status = item.get("status")
+            status = raw_status.strip().lower() if isinstance(raw_status, str) and raw_status.strip() else "unknown"
+            entry = {
+                "id": str(result_id),
+                "name": item["name"] if isinstance(item.get("name"), str) else str(result_id),
+                "fullName": None,
+                "status": status,
+                "duration": coerce_int(item.get("duration")) if item.get("duration") is not None else None,
+                "message": None,
+                "suite": None,
+                "tags": [],
+            }
+            if status in {"failed", "broken"} and re.fullmatch(r"[0-9A-Za-z_-]{1,128}", str(result_id)):
+                entry.update(self._read_result_details(details_dir / f"{result_id}.json"))
+            results.append(entry)
+        return results
+
+    @staticmethod
+    def _read_result_details(path: Path) -> dict:
+        try:
+            details = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(details, dict):
+            return {}
+        error = details.get("error") if isinstance(details.get("error"), dict) else {}
+        message = error.get("message") if isinstance(error.get("message"), str) else None
+        labels = details.get("labels") if isinstance(details.get("labels"), list) else []
+        label = lambda name: [  # noqa: E731
+            entry.get("value")
+            for entry in labels
+            if isinstance(entry, dict) and entry.get("name") == name and isinstance(entry.get("value"), str)
+        ]
+        suites = label("suite") or label("parentSuite")
+        return {
+            "fullName": details.get("fullName") if isinstance(details.get("fullName"), str) else None,
+            "message": message.strip() if message else None,
+            "suite": suites[0] if suites else None,
+            "tags": label("tag"),
+        }

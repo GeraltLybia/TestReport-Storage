@@ -10,6 +10,7 @@ from .analytics import HistoryAnalyticsService
 from .common import coerce_int
 from .context import StorageContext
 from .history_index import HistoryIndexService
+from . import runs as runs_view
 from .repositories import HistoryRepository
 
 logger = logging.getLogger(__name__)
@@ -192,3 +193,29 @@ class HistoryService:
             stop_from=stop_from,
             stop_to=stop_to,
         )
+
+    def list_history_runs(
+        self,
+        search: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        if not self.repository.has_any_history():
+            return {"total": 0, "counts": {"all": 0, "failed": 0, "broken": 0, "passed": 0}, "items": []}
+        self.index_service.ensure_index()
+        index = self.index_service.load_index()
+        return runs_view.list_runs(index, search=search, status=status, limit=limit, offset=offset)
+
+    def get_history_run_results(
+        self,
+        run_uuid: str,
+        status: str | None = "incidents",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict | None:
+        if not self.repository.has_any_history():
+            return None
+        self.index_service.ensure_index()
+        index = self.index_service.load_index()
+        return runs_view.get_run_results(index, run_uuid, status=status, limit=limit, offset=offset)

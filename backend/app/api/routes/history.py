@@ -1,10 +1,16 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from ...dependencies import get_history_service
-from ...schemas.history import HistoryDashboardSummary, HistoryInfo, HistorySelectedTestDetails
+from ...schemas.history import (
+    HistoryDashboardSummary,
+    HistoryInfo,
+    HistoryRunList,
+    HistoryRunResults,
+    HistorySelectedTestDetails,
+)
 from ...schemas.report import MessageResponse
 from ...services.reporting import HistoryService
 
@@ -125,3 +131,39 @@ def get_history_test_details(
     if details is None:
         raise HTTPException(status_code=404, detail="Test not found")
     return details
+
+
+@router.get(
+    "/runs",
+    response_model=HistoryRunList,
+    summary="Список прогонов из history",
+    description="Постраничный список прогонов, восстановленных из history index (без скачивания JSONL).",
+)
+def list_history_runs(
+    search: str | None = None,
+    status: str | None = Query(default=None, pattern="^(all|failed|broken|passed)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: HistoryService = Depends(get_history_service),
+):
+    return service.list_history_runs(search=search, status=status, limit=limit, offset=offset)
+
+
+@router.get(
+    "/runs/{run_uuid}/results",
+    response_model=HistoryRunResults,
+    summary="Результаты тестов прогона",
+    description="Результаты тестов одного прогона из history index; по умолчанию только failed и broken.",
+    responses={404: {"description": "Прогон не найден"}},
+)
+def get_history_run_results(
+    run_uuid: str,
+    status: str = Query(default="incidents", pattern="^(all|incidents|failed|broken|passed)$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    service: HistoryService = Depends(get_history_service),
+):
+    results = service.get_history_run_results(run_uuid, status=status, limit=limit, offset=offset)
+    if results is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return results
