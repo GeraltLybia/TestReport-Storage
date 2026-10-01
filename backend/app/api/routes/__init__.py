@@ -1,3 +1,3 @@
-from . import history, reports
+from . import coverage, history, reports
 
-__all__ = ["history", "reports"]
+__all__ = ["coverage", "history", "reports"]
