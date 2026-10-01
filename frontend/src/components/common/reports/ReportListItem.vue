@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { formatDate, formatDuration, formatSize, getReportTitle } from '../../../utils/reports'
+import { computed } from 'vue'
+
+import {
+  formatDate,
+  formatDuration,
+  formatSize,
+  getPassRate,
+  getReportTitle,
+  getReportTone,
+  parseReportName,
+} from '../../../utils/reports'
 import type { Report } from '../../../types/reports'
 
 const props = defineProps<{
@@ -9,98 +19,66 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [id: string]
-  download: [id: string]
-  delete: [id: string]
 }>()
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault()
-    emit('select', props.report.id)
-  }
-}
+const title = computed(() => getReportTitle(props.report))
+const parsed = computed(() => parseReportName(title.value))
+const tone = computed(() => getReportTone(props.report))
+
+const meta = computed(() => {
+  const stats = props.report.stats
+  return [
+    parsed.value?.user,
+    stats ? `${stats.total} ${stats.total === 1 ? 'тест' : 'тестов'}` : null,
+    props.report.duration ? formatDuration(props.report.duration) : null,
+    formatSize(props.report.size),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+
+const shares = computed(() => {
+  const s = props.report.stats
+  const share = (value: number) => `${s && s.total ? (value / s.total) * 100 : 0}%`
+  return { passed: share(s?.passed ?? 0), failed: share(s?.failed ?? 0), broken: share(s?.broken ?? 0) }
+})
+
+const passRate = computed(() => getPassRate(props.report))
+const rateTone = computed(() => (passRate.value < 70 ? 'failed' : passRate.value < 90 ? 'broken' : 'ok'))
 </script>
 
 <template>
-  <li
-    class="report-item"
-    :class="{ 'report-item--active': active }"
-    role="button"
-    tabindex="0"
-    :aria-label="`Открыть отчёт ${getReportTitle(report)}`"
-    @click="emit('select', report.id)"
-    @keydown="handleKeydown"
-  >
-    <div class="report-main">
-      <div class="report-name" :title="getReportTitle(report)">
-        {{ getReportTitle(report) }}
-      </div>
-      <div class="report-meta">
-        <span>{{ formatDate(report.created_at) }}</span>
-        <span>·</span>
-        <span>{{ formatSize(report.size) }}</span>
-        <span>·</span>
-        <span>Длительность: {{ formatDuration(report.duration) }}</span>
-        <span>·</span>
-        <span class="report-id-short">{{ report.id.slice(0, 8) }}…</span>
-      </div>
-      <div v-if="report.status" class="report-status">
-        <span class="stat-chip" :class="`status-chip status-chip--${report.status.toLowerCase()}`">
-          Статус: {{ report.status }}
+  <li>
+    <button
+      type="button"
+      class="report-item"
+      :class="{ 'report-item--active': active }"
+      :aria-current="active ? 'true' : undefined"
+      :title="title"
+      @click="emit('select', report.id)"
+    >
+      <span class="report-icon" :class="`report-icon--${tone}`" aria-hidden="true">
+        <svg v-if="tone === 'failed'" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        <svg v-else-if="tone === 'broken'" viewBox="0 0 24 24"><path d="M12 5v9M12 19v.5" /></svg>
+        <svg v-else-if="tone === 'passed'" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+        <svg v-else viewBox="0 0 24 24"><path d="M6 12h12" /></svg>
+      </span>
+      <span class="report-main">
+        <span class="report-name">
+          <template v-if="parsed">{{ parsed.date }} · {{ parsed.time }}</template>
+          <template v-else>{{ title }}</template>
         </span>
-      </div>
-      <div v-if="report.stats" class="report-stats">
-        <span class="stat-chip stat-chip--failed"> Сбоя: {{ report.stats.failed }} </span>
-        <span class="stat-chip stat-chip--passed"> Пройдено: {{ report.stats.passed }} </span>
-        <span class="stat-chip stat-chip--flaky"> Нестабильно: {{ report.stats.flaky }} </span>
-        <span class="stat-chip stat-chip--broken"> Сломано: {{ report.stats.broken }} </span>
-        <span class="stat-chip"> Всего: {{ report.stats.total }} </span>
-      </div>
-    </div>
-    <div class="report-actions">
-      <button
-        type="button"
-        class="icon-button"
-        title="Скачать ZIP"
-        aria-label="Скачать ZIP"
-        @click.stop="emit('download', report.id)"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12 3v12" />
-          <path d="m7 11 5 5 5-5" />
-          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="icon-button icon-button--danger"
-        title="Удалить"
-        aria-label="Удалить отчёт"
-        @click.stop="emit('delete', report.id)"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 7h16" />
-          <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-          <path d="m6 7 1 13a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9L18 7" />
-        </svg>
-      </button>
-    </div>
+        <span class="report-meta">{{ meta || formatDate(report.created_at) }}</span>
+      </span>
+      <span v-if="report.stats?.total" class="report-score">
+        <span class="mono-strong" :class="`rate--${rateTone}`">{{ passRate }}%</span>
+        <span class="stack-bar report-bar">
+          <span class="stack-bar-seg stack-bar-seg--passed" :style="{ width: shares.passed }"></span>
+          <span class="stack-bar-seg stack-bar-seg--failed" :style="{ width: shares.failed }"></span>
+          <span class="stack-bar-seg stack-bar-seg--broken" :style="{ width: shares.broken }"></span>
+        </span>
+      </span>
+    </button>
   </li>
 </template>
 

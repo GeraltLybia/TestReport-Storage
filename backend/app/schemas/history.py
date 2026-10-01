@@ -65,6 +65,7 @@ class HistoryUnstableTest(BaseModel):
     failedRuns: int
     brokenRuns: int
     lastStatus: str
+    recentStatuses: list[str] = []
 
 
 class HistoryStabilityDetailItem(BaseModel):
@@ -111,3 +112,47 @@ class HistorySelectedTestDetails(BaseModel):
     totalRuns: int
     incidents: int
     history: list[HistoryTestDetailsEntry]
+
+
+class TestResultItem(BaseModel):
+    id: str
+    name: str
+    fullName: str | None = None
+    status: str
+    duration: int | None = None
+    message: str | None = None
+    suite: str | None = None
+    tags: list[str] = []
+
+
+class HistoryRunSummary(BaseModel):
+    uuid: str
+    name: str
+    timestamp: int
+    total: int
+    passed: int
+    failed: int
+    broken: int
+    other: int
+    duration: int | None = None
+    passRate: int
+    status: str
+
+
+class HistoryRunCounts(BaseModel):
+    all: int
+    failed: int
+    broken: int
+    passed: int
+
+
+class HistoryRunList(BaseModel):
+    total: int
+    counts: HistoryRunCounts
+    items: list[HistoryRunSummary]
+
+
+class HistoryRunResults(BaseModel):
+    run: HistoryRunSummary
+    total: int
+    items: list[TestResultItem]

@@ -1,13 +1,16 @@
 .report-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.55rem 0.6rem;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem;
   border-radius: 10px;
-  cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   transition:
     background var(--dur-fast) var(--ease-apple),
     border-color var(--dur-fast) var(--ease-apple);
@@ -15,147 +18,85 @@
 
 .report-item:hover {
   background: var(--surface-2);
-  border-color: var(--border-strong);
 }
 
-.report-item--active {
+.report-item--active,
+.report-item--active:hover {
+  border-color: var(--accent);
   background: var(--accent-soft);
-  border-color: var(--accent-border);
 }
 
-.report-full {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
+.report-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.report-icon svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.report-icon--passed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.report-icon--failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.report-icon--broken {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .report-main {
-  min-width: 0;
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.report-name,
+.report-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .report-name {
-  font-size: 0.88rem;
-  font-weight: 550;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 .report-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   color: var(--text-3);
-  margin-top: 0.15rem;
-  font-variant-numeric: tabular-nums;
 }
 
-.report-status,
-.report-stats {
+.report-score {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.35rem;
-}
-
-.stat-chip {
-  font-size: 0.7rem;
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
-  padding: 0.12rem 0.45rem;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-2);
-}
-
-.stat-chip--failed {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.stat-chip--passed {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.stat-chip--flaky {
-  background: var(--flaky-soft);
-  color: var(--flaky);
-}
-
-.stat-chip--broken {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
-.status-chip--passed {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.status-chip--failed {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.status-chip--broken {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
-.status-chip--flaky {
-  background: var(--flaky-soft);
-  color: var(--flaky);
-}
-
-.report-id-short {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 0.68rem;
-}
-
-.report-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
   flex-shrink: 0;
 }
 
-.icon-button {
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  width: 1.75rem;
-  height: 1.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  background: transparent;
-  color: var(--text-3);
-  transition:
-    background var(--dur-fast) var(--ease-apple),
-    color var(--dur-fast) var(--ease-apple),
-    box-shadow var(--dur-fast) var(--ease-apple);
-}
-
-.icon-button:hover {
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--hairline);
-  color: var(--text);
-}
-
-.icon-button svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.icon-button--danger:hover {
-  background: var(--danger-soft);
-  box-shadow: inset 0 0 0 1px var(--danger-border);
-  color: var(--danger);
+.report-bar {
+  width: 3.5rem;
+  height: 4px;
 }

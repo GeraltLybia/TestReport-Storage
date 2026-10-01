@@ -1,4 +1,14 @@
-import type { HistoryDashboardSummary, HistoryInfo, HistorySelectedTestDetails, Report } from '../types/reports'
+import type {
+  HistoryDashboardSummary,
+  HistoryInfo,
+  HistoryRunList,
+  HistoryRunResults,
+  HistorySelectedTestDetails,
+  Report,
+  ReportResults,
+  ResultStatusFilter,
+  RunStatusFilter,
+} from '../types/reports'
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
 
@@ -136,4 +146,46 @@ export function reportStaticUrl(report: Report) {
 
 export function historyDownloadUrl() {
   return apiUrl('/api/history')
+}
+
+export type HistoryRunsQuery = {
+  search?: string
+  status?: RunStatusFilter
+  limit?: number
+  offset?: number
+}
+
+export async function fetchHistoryRuns(params: HistoryRunsQuery, signal?: AbortSignal) {
+  const query = new URLSearchParams()
+  if (params.search?.trim()) query.set('search', params.search.trim())
+  if (params.status && params.status !== 'all') query.set('status', params.status)
+  if (params.limit) query.set('limit', String(params.limit))
+  if (params.offset) query.set('offset', String(params.offset))
+  const suffix = query.toString() ? `?${query}` : ''
+  const response = await fetch(apiUrl(`/api/history/runs${suffix}`), { signal })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Ошибка загрузки прогонов'))
+  }
+  return (await response.json()) as HistoryRunList
+}
+
+export async function fetchHistoryRunResults(runUuid: string, status: ResultStatusFilter, signal?: AbortSignal) {
+  const response = await fetch(
+    apiUrl(`/api/history/runs/${encodeURIComponent(runUuid)}/results?status=${status}&limit=1000`),
+    { signal },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Ошибка загрузки результатов прогона'))
+  }
+  return (await response.json()) as HistoryRunResults
+}
+
+export async function fetchReportResults(reportId: string, status: ResultStatusFilter, signal?: AbortSignal) {
+  const response = await fetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/results?status=${status}`), {
+    signal,
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Ошибка загрузки результатов отчета'))
+  }
+  return (await response.json()) as ReportResults
 }

@@ -1,6 +1,9 @@
 from .common import build_run_label, normalize_status, percentile
 from .models import HistoryIndexData, HistoryResultRecord
 
+# How many latest statuses per test the dashboard shows as a run-history strip.
+RECENT_STATUSES_LIMIT = 10
+
 
 class HistoryAnalyticsService:
     def __init__(self, index_service):
@@ -167,7 +170,9 @@ class HistoryAnalyticsService:
                 stability_summary["alwaysPassed"] += 1
                 stability_details["alwaysPassed"].append(detail_item)
 
-            if summary["total_runs"] > 1 and summary["incidents"] > 0:
+            # Only tests that both pass and fail are "unstable"; always-failing
+            # tests are reported separately via the alwaysFailed bucket.
+            if summary["total_runs"] > 1 and has_incident and has_passed:
                 top_unstable_tests.append(
                     {
                         "key": key,
@@ -186,6 +191,7 @@ class HistoryAnalyticsService:
                         "failedRuns": summary["failed_runs"],
                         "brokenRuns": summary["broken_runs"],
                         "lastStatus": summary["last_status"],
+                        "recentStatuses": summary["recent_statuses"],
                     }
                 )
 
@@ -317,6 +323,10 @@ class HistoryAnalyticsService:
         failed_runs = sum(1 for result in results if normalize_status(result.status) == "failed")
         broken_runs = sum(1 for result in results if normalize_status(result.status) == "broken")
         incidents = failed_runs + broken_runs
+        recent_statuses = [
+            normalize_status(result.status)
+            for result in sorted(results, key=lambda item: item.stop or 0)[-RECENT_STATUSES_LIMIT:]
+        ]
         return {
             "name": latest.name or key,
             "last_status": normalize_status(latest.status),
@@ -326,6 +336,7 @@ class HistoryAnalyticsService:
             "failed_runs": failed_runs,
             "broken_runs": broken_runs,
             "incidents": incidents,
+            "recent_statuses": recent_statuses,
         }
 
     def result_matches_filters(
