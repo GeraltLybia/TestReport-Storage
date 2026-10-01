@@ -102,8 +102,9 @@ class GraphqlCoverage:
             for arg in args:
                 self.arg_calls[(type_name, field_name, arg)] += 1
             tests = self.field_tests[key]
-            if test_key not in tests and len(tests) < MAX_TESTS_PER_FIELD:
-                tests[test_key] = test
+            test_id = test.get("fullName") or test.get("name") or test_key  # one entry per test across reports
+            if test_id not in tests and len(tests) < MAX_TESTS_PER_FIELD:
+                tests[test_id] = test
 
     def _remember_invalid(self, query: str, message: str) -> None:
         self.invalid_calls += 1

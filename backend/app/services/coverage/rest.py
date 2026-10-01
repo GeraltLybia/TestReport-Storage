@@ -186,8 +186,10 @@ class RestCoverage:
                 if operation.pattern.match(relative):
                     operation.calls += 1
                     operation.status_calls[status or "?"] += 1
-                    if test_key not in operation.tests and len(operation.tests) < MAX_TESTS_PER_OPERATION:
-                        operation.tests[test_key] = test
+                    # The same test from several reports is listed once.
+                    test_id = test.get("fullName") or test.get("name") or test_key
+                    if test_id not in operation.tests and len(operation.tests) < MAX_TESTS_PER_OPERATION:
+                        operation.tests[test_id] = test
                     self.matched_calls += 1
                     self.matched_hosts.add(host)
                     self.tests_with_calls.add(test_key)
