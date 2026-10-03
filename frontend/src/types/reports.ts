@@ -181,8 +181,27 @@ export type HistoryDashboardSummary = {
   tagHealth: HistoryTagHealth[]
 }
 
+/** How a result differs from the previous result of the same test in history. */
+export type ResultChange = 'new_failure' | 'still_failing' | 'fixed' | 'new_test'
+
+export type PreviousResult = {
+  status: string
+  runName?: string | null
+  runUuid?: string | null
+  at?: number | null
+}
+
+export type ResultChanges = {
+  newFailures: number
+  stillFailing: number
+  fixed: number
+  newTests: number
+}
+
 export type TestResultItem = {
   id: string
+  /** Key of the test in history (full name); opens the test details drawer. */
+  testKey?: string | null
   name: string
   fullName?: string | null
   status: string
@@ -190,10 +209,14 @@ export type TestResultItem = {
   message?: string | null
   suite?: string | null
   tags?: string[]
+  /** First line of the error, same as failure signatures on the dashboard. */
+  signature?: string | null
+  change?: ResultChange | null
+  previous?: PreviousResult | null
 }
 
-/** `incidents` = failed + broken. */
-export type ResultStatusFilter = 'incidents' | 'all'
+/** `incidents` = failed + broken; `changes` = new failures, fixed tests and new failing tests. */
+export type ResultStatusFilter = 'incidents' | 'changes' | 'all'
 
 export type HistoryRunSummary = {
   uuid: string
@@ -221,9 +244,12 @@ export type HistoryRunResults = {
   run: HistoryRunSummary
   total: number
   items: TestResultItem[]
+  changes: ResultChanges
 }
 
 export type ReportResults = {
   total: number
   items: TestResultItem[]
+  /** Null when there is no history to compare with. */
+  changes?: ResultChanges | null
 }

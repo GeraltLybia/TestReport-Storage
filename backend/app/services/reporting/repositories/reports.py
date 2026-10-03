@@ -250,9 +250,9 @@ class ReportsRepository:
     def read_report_results(self, report_id: str) -> list[dict] | None:
         """Test results of an uploaded Allure 3 report.
 
-        The list comes from `test-results.json`; error message and full name are
-        read from `data/test-results/<id>.json` only for failed/broken results,
-        so large green reports stay cheap. Returns None for an unknown report and
+        The list comes from `test-results.json`; full name, start time and labels
+        are read from `data/test-results/<id>.json` (the error message only for
+        failed/broken results). Returns None for an unknown report and
         [] when the report carries no result data.
         """
         report_dir = self.resolve_report_dir(report_id)
@@ -287,13 +287,16 @@ class ReportsRepository:
                 "suite": None,
                 "tags": [],
             }
-            if status in {"failed", "broken"} and re.fullmatch(r"[0-9A-Za-z_-]{1,128}", str(result_id)):
-                entry.update(self._read_result_details(details_dir / f"{result_id}.json"))
+            if re.fullmatch(r"[0-9A-Za-z_-]{1,128}", str(result_id)):
+                entry.update(
+                    self._read_result_details(details_dir / f"{result_id}.json", with_error=status in {"failed", "broken"})
+                )
+            entry["testKey"] = entry["fullName"] or entry["name"]
             results.append(entry)
         return results
 
     @staticmethod
-    def _read_result_details(path: Path) -> dict:
+    def _read_result_details(path: Path, with_error: bool = True) -> dict:
         try:
             details = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -301,7 +304,7 @@ class ReportsRepository:
         if not isinstance(details, dict):
             return {}
         error = details.get("error") if isinstance(details.get("error"), dict) else {}
-        message = error.get("message") if isinstance(error.get("message"), str) else None
+        message = error.get("message") if with_error and isinstance(error.get("message"), str) else None
         labels = details.get("labels") if isinstance(details.get("labels"), list) else []
         label = lambda name: [  # noqa: E731
             entry.get("value")
@@ -311,6 +314,7 @@ class ReportsRepository:
         suites = label("suite") or label("parentSuite")
         return {
             "fullName": details.get("fullName") if isinstance(details.get("fullName"), str) else None,
+            "start": coerce_int(details.get("start")) or None,
             "message": message.strip() if message else None,
             "suite": suites[0] if suites else None,
             "tags": label("tag"),

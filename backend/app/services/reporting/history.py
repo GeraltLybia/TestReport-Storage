@@ -207,6 +207,18 @@ class HistoryService:
         index = self.index_service.load_index()
         return runs_view.list_runs(index, search=search, status=status, limit=limit, offset=offset)
 
+    def annotate_changes(self, items: list[dict]) -> dict | None:
+        """Marks report results against history: the previous result of each test
+        before the report's first test started. None when there is no history."""
+        if not items or not self.repository.has_any_history():
+            return None
+        starts = [item["start"] for item in items if item.get("start")]
+        if not starts:
+            return None
+        self.index_service.ensure_index()
+        index = self.index_service.load_index()
+        return runs_view.annotate_changes(items, runs_view.build_previous_lookup(index), before=min(starts))
+
     def get_history_run_results(
         self,
         run_uuid: str,

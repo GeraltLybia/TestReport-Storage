@@ -91,7 +91,7 @@ Frontend dev server: `http://localhost:5173`
 - `GET /api/reports` - get the list of uploaded Allure reports with metadata
 - `POST /api/reports/upload` - upload a new Allure report as a `ZIP` archive (`multipart/form-data`, `file` field)
 - `GET /api/reports/{report_id}/download` - download a specific report as a `ZIP` archive
-- `GET /api/reports/{report_id}/results?status=incidents|all|failed|broken|passed` - test results from the report's Allure data (failed and broken by default)
+- `GET /api/reports/{report_id}/results?status=incidents|changes|all|failed|broken|passed` - test results from the report's Allure data (failed and broken by default). Each result is compared with the previous run of the test in history (`change`: `new_failure` / `still_failing` / `fixed` / `new_test`, `previous`), counters are in `changes`; `status=changes` keeps new failures and fixed tests
 - `DELETE /api/reports/{report_id}` - delete a report by its identifier
 
 ## History API
@@ -102,7 +102,7 @@ Frontend dev server: `http://localhost:5173`
 - `GET /api/history/dashboard/tests/{test_key}` - get selected test details for the dashboard
 - `POST /api/history/rebuild-index` - force a full reread of `history.jsonl` and rebuild `history_index.json`
 - `GET /api/history/runs?search=&status=&limit=&offset=` - paged list of runs from the history index
-- `GET /api/history/runs/{run_uuid}/results?status=incidents|all|...` - test results of a run
+- `GET /api/history/runs/{run_uuid}/results?status=incidents|changes|all|...` - test results of a run, compared with the previous run
 
 ## Coverage API
 - `GET /api/coverage` - list coverage measurements

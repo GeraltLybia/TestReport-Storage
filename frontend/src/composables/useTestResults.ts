@@ -1,8 +1,8 @@
 import { ref, watch, type Ref } from 'vue'
 
-import type { HistoryRunSummary, ResultStatusFilter, TestResultItem } from '../types/reports'
+import type { HistoryRunSummary, ResultChanges, ResultStatusFilter, TestResultItem } from '../types/reports'
 
-type ResultsPage = { total: number; items: TestResultItem[]; run?: HistoryRunSummary }
+type ResultsPage = { total: number; items: TestResultItem[]; run?: HistoryRunSummary; changes?: ResultChanges | null }
 type Fetcher = (key: string, status: ResultStatusFilter, signal: AbortSignal) => Promise<ResultsPage>
 
 /**
@@ -15,6 +15,7 @@ export function useTestResults(key: Ref<string | null>, fetcher: Fetcher, enable
   const items = ref<TestResultItem[]>([])
   const total = ref(0)
   const run = ref<HistoryRunSummary | null>(null)
+  const changes = ref<ResultChanges | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   let controller: AbortController | null = null
@@ -33,6 +34,7 @@ export function useTestResults(key: Ref<string | null>, fetcher: Fetcher, enable
       items.value = page.items
       total.value = page.total
       run.value = page.run ?? null
+      changes.value = page.changes ?? null
     } catch (exception) {
       if (signal.aborted) return
       items.value = []
@@ -47,10 +49,11 @@ export function useTestResults(key: Ref<string | null>, fetcher: Fetcher, enable
     items.value = []
     total.value = 0
     run.value = null
+    changes.value = null
     statusFilter.value = 'incidents'
   })
 
   watch([key, statusFilter, enabled], () => void load(), { immediate: true })
 
-  return { statusFilter, items, total, run, loading, error, reload: load }
+  return { statusFilter, items, total, run, changes, loading, error, reload: load }
 }

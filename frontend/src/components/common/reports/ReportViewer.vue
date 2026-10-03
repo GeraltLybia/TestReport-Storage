@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import DashboardTestDetailsPanel from './dashboard/DashboardTestDetailsPanel.vue'
 import TestResultList from '../results/TestResultList.vue'
 import { fetchReportResults } from '../../../api/reports'
+import { useTestDetailsDrawer } from '../../../composables/useTestDetailsDrawer'
 import { useTestResults } from '../../../composables/useTestResults'
 
 import {
@@ -36,6 +38,7 @@ const results = useTestResults(
   computed(() => activeTab.value === 'results'),
 )
 const resultsStatus = results.statusFilter
+const testDrawer = useTestDetailsDrawer()
 const incidentsCount = computed(() => (props.report?.stats?.failed ?? 0) + (props.report?.stats?.broken ?? 0))
 const title = computed(() => (props.report ? getReportTitle(props.report) : ''))
 const parsed = computed(() => parseReportName(title.value))
@@ -180,9 +183,13 @@ const stats = computed(() => {
           :total="results.total.value"
           :loading="results.loading.value"
           :error="results.error.value"
+          :changes="results.changes.value"
+          :opening-test-key="testDrawer.loadingKey.value"
           :incidents-count="incidentsCount"
           @retry="results.reload()"
+          @open-test="testDrawer.open($event)"
         />
+        <p v-if="testDrawer.error.value" class="drawer-error" role="alert">{{ testDrawer.error.value }}</p>
       </div>
 
       <div v-show="activeTab === 'allure'" class="viewer-frame-wrap" role="tabpanel">
@@ -207,6 +214,13 @@ const stats = computed(() => {
       <h2>Выберите отчёт</h2>
       <p>Список отчётов — слева.</p>
     </div>
+
+    <DashboardTestDetailsPanel
+      v-if="testDrawer.details.value"
+      :selected-test-details="testDrawer.details.value"
+      :normalize-status="testDrawer.normalizeStatus"
+      @close="testDrawer.close()"
+    />
   </section>
 </template>
 

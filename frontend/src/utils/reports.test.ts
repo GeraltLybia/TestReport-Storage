@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  describeChange,
   formatDate,
   formatDuration,
   formatShortDuration,
@@ -9,6 +10,7 @@ import {
   getReportTone,
   parseReportName,
   parseRunLabel,
+  pluralRu,
   splitTestName,
   statusTone,
 } from './reports'
@@ -135,5 +137,31 @@ describe('getReportTone', () => {
     expect(getReportTone({ ...base, status: 'Broken' })).toBe('broken')
     expect(getReportTone({ ...base, stats: { total: 3, passed: 2, failed: 1, flaky: 0, broken: 0 } })).toBe('failed')
     expect(getReportTone({ ...base, stats: { total: 0, passed: 0, failed: 0, flaky: 0, broken: 0 } })).toBe('other')
+  })
+})
+
+describe('pluralRu', () => {
+  const forms: [string, string, string] = ['падение', 'падения', 'падений']
+  it('picks the Russian plural form', () => {
+    expect([1, 2, 5, 11, 12, 21, 22, 25, 101, 111].map((n) => pluralRu(n, forms))).toEqual([
+      'падение',
+      'падения',
+      'падений',
+      'падений',
+      'падений',
+      'падение',
+      'падения',
+      'падений',
+      'падение',
+      'падений',
+    ])
+  })
+})
+
+describe('describeChange', () => {
+  it('labels changes and ignores unchanged results', () => {
+    expect(describeChange('new_failure')).toEqual({ label: 'Новое падение', tone: 'new-failure' })
+    expect(describeChange('fixed')?.tone).toBe('fixed')
+    expect(describeChange(null)).toBeNull()
   })
 })

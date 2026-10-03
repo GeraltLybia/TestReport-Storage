@@ -1,4 +1,4 @@
-import type { Report } from '../types/reports'
+import type { Report, ResultChange } from '../types/reports'
 
 const DATE_LOCALE = 'ru-RU'
 
@@ -143,4 +143,25 @@ export function getReportTone(report: Report) {
   if (s.failed) return 'failed'
   if (s.broken) return 'broken'
   return s.total ? 'passed' : 'other'
+}
+
+/** Russian plural: pluralRu(2, ['падение', 'падения', 'падений']) → 'падения'. */
+export function pluralRu(count: number, forms: [string, string, string]) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return forms[0]
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1]
+  return forms[2]
+}
+
+const CHANGE_LABELS: Record<ResultChange, { label: string; tone: string }> = {
+  new_failure: { label: 'Новое падение', tone: 'new-failure' },
+  still_failing: { label: 'Падает повторно', tone: 'still-failing' },
+  fixed: { label: 'Починен', tone: 'fixed' },
+  new_test: { label: 'Новый тест', tone: 'new-test' },
+}
+
+/** Badge for a result compared with the previous run; null when nothing changed. */
+export function describeChange(change: ResultChange | null | undefined) {
+  return change ? CHANGE_LABELS[change] : null
 }

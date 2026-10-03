@@ -125,3 +125,68 @@ def test_report_results_read_allure3_data_with_error_details():
         assert results["bbb"]["message"] == "PostgresConnectError: no route"
         assert (results["bbb"]["suite"], results["bbb"]["tags"]) == ("Robot", ["robot_new"])
         assert repo.read_report_results("22222222-2222-4333-8444-555555555555") is None
+
+
+def _changes_index() -> HistoryIndexData:
+    results = [
+        _result("r1", "t#stable", "passed", 1000),
+        _result("r1", "t#breaks", "passed", 1010),
+        _result("r1", "t#heals", "failed", 1020, "AssertionError: x"),
+        _result("r1", "t#stuck", "broken", 1030, "KeyError: 'items'"),
+        _result("r2", "t#stable", "passed", 2000),
+        _result("r2", "t#breaks", "failed", 2010, "AssertionError: y"),
+        _result("r2", "t#heals", "passed", 2020),
+        _result("r2", "t#stuck", "broken", 2030, "KeyError: 'items'"),
+        _result("r2", "t#fresh", "failed", 2040, "TimeoutError"),
+    ]
+    for item in results:
+        item.signature = item.message or ""
+    return HistoryIndexData(
+        version=1,
+        source_size=0,
+        source_mtime_ns=0,
+        records=2,
+        runs=[HistoryRunRecord("r1", "Run r1", 1000), HistoryRunRecord("r2", "Run r2", 2000)],
+        results=results,
+        filter_options=HistoryFilterOptions(),
+    )
+
+
+def test_run_results_compare_with_previous_run():
+    results = runs.get_run_results(_changes_index(), "r2", status="all")
+    by_key = {item["testKey"]: item for item in results["items"]}
+
+    assert results["changes"] == {"newFailures": 1, "stillFailing": 1, "fixed": 1, "newTests": 1}
+    assert by_key["t#breaks"]["change"] == "new_failure"
+    assert by_key["t#breaks"]["previous"] == {"status": "passed", "runName": "Run r1", "runUuid": "r1", "at": 1020}
+    assert by_key["t#stuck"]["change"] == "still_failing"
+    assert by_key["t#heals"]["change"] == "fixed"
+    assert by_key["t#fresh"]["change"] == "new_test" and by_key["t#fresh"]["previous"] is None
+    assert by_key["t#stable"]["change"] is None
+    assert by_key["t#breaks"]["signature"] == "AssertionError: y"
+    assert by_key["t#heals"]["signature"] is None
+    # New failures go before failures that were already red.
+    failed = [item["testKey"] for item in results["items"] if item["status"] == "failed"]
+    assert failed == ["t#breaks", "t#fresh"]
+
+
+def test_run_results_changes_filter_and_first_run():
+    changed = runs.get_run_results(_changes_index(), "r2", status="changes")
+    assert sorted(item["testKey"] for item in changed["items"]) == ["t#breaks", "t#fresh", "t#heals"]
+
+    first = runs.get_run_results(_changes_index(), "r1", status="all")
+    assert first["changes"]["newTests"] == 4
+    assert all(item["previous"] is None for item in first["items"])
+
+
+def test_annotate_changes_ignores_results_after_cutoff():
+    lookup = runs.build_previous_lookup(_changes_index())
+    items = [{"testKey": "t#breaks", "status": "failed"}]
+
+    # A report uploaded between r1 and r2 compares with r1 only.
+    counters = runs.annotate_changes(items, lookup, before=1500)
+    assert counters["newFailures"] == 1 and items[0]["previous"]["runUuid"] == "r1"
+
+    # The same run in history (same start) is excluded by the cutoff.
+    runs.annotate_changes(items, lookup, before=2010)
+    assert items[0]["previous"]["runUuid"] == "r1"

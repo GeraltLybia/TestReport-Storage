@@ -114,8 +114,23 @@ class HistorySelectedTestDetails(BaseModel):
     history: list[HistoryTestDetailsEntry]
 
 
+class PreviousResult(BaseModel):
+    status: str
+    runName: str | None = None
+    runUuid: str | None = None
+    at: int | None = None
+
+
+class ResultChanges(BaseModel):
+    newFailures: int
+    stillFailing: int
+    fixed: int
+    newTests: int
+
+
 class TestResultItem(BaseModel):
     id: str
+    testKey: str | None = None
     name: str
     fullName: str | None = None
     status: str
@@ -123,6 +138,9 @@ class TestResultItem(BaseModel):
     message: str | None = None
     suite: str | None = None
     tags: list[str] = []
+    signature: str | None = None
+    change: str | None = None
+    previous: PreviousResult | None = None
 
 
 class HistoryRunSummary(BaseModel):
@@ -156,3 +174,4 @@ class HistoryRunResults(BaseModel):
     run: HistoryRunSummary
     total: int
     items: list[TestResultItem]
+    changes: ResultChanges
