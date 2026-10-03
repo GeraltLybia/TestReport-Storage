@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import DashboardTestDetailsPanel from '../reports/dashboard/DashboardTestDetailsPanel.vue'
+import EntityToolbar, { type ToolbarCount, type ToolbarMeta } from '../layout/EntityToolbar.vue'
 import TestResultList from '../results/TestResultList.vue'
 import { fetchHistoryRunResults } from '../../../api/reports'
 import { useTestDetailsDrawer } from '../../../composables/useTestDetailsDrawer'
@@ -27,10 +28,6 @@ const run = computed(() => loadedRun.value ?? props.summary)
 
 const parsed = computed(() => (run.value ? parseReportName(run.value.name) : null))
 const tone = computed(() => statusTone(run.value?.status))
-const rateTone = computed(() => {
-  const rate = run.value?.passRate ?? 0
-  return rate < 70 ? 'failed' : rate < 90 ? 'broken' : 'ok'
-})
 const startedAt = computed(() => {
   if (!run.value) return '-'
   const date = new Date(run.value.timestamp)
@@ -48,81 +45,52 @@ const shares = computed(() => {
 const matchingReport = computed(() =>
   run.value ? (props.reports.find((report) => getReportTitle(report) === run.value?.name) ?? null) : null,
 )
+
+const counts = computed<ToolbarCount[]>(() => {
+  const r = run.value
+  if (!r) return []
+  return [
+    { label: 'всего', value: r.total },
+    { label: 'пройдено', value: r.passed, dot: 'passed' },
+    { label: 'сбой', value: r.failed, dot: 'failed' },
+    { label: 'сломано', value: r.broken, dot: 'broken' },
+    { label: 'прочее', value: r.other, dot: 'other' },
+  ]
+})
+
+const meta = computed<ToolbarMeta[]>(() => {
+  const r = run.value
+  if (!r) return []
+  const items: ToolbarMeta[] = []
+  if (parsed.value?.user) items.push({ label: 'Автор', value: parsed.value.user })
+  items.push({ label: 'Прогон', value: startedAt.value })
+  if (r.duration) items.push({ label: 'Длительность', value: formatShortDuration(r.duration) })
+  items.push({ label: 'UUID', value: r.uuid.slice(0, 8), mono: true, title: r.uuid })
+  items.push({ label: 'Источник', value: 'history.jsonl' })
+  return items
+})
 </script>
 
 <template>
   <section class="run" :aria-label="run ? `Прогон ${run.name}` : 'Прогон не выбран'">
     <template v-if="run">
-      <header class="run-head">
-        <div class="run-title-row">
-          <div class="run-title">
-            <h2>{{ run.name }}</h2>
-            <span class="status-pill" :class="`status-pill--${tone}`">{{ run.status }}</span>
-          </div>
-          <RouterLink
-            v-if="matchingReport"
-            class="ghost-button"
-            :to="{ name: 'report-by-id', params: { reportId: matchingReport.id } }"
-          >
-            Открыть Allure-отчёт
-          </RouterLink>
-        </div>
-
-        <dl class="run-meta">
-          <div v-if="parsed?.user">
-            <dt>Автор</dt>
-            <dd>{{ parsed.user }}</dd>
-          </div>
-          <div>
-            <dt>Прогон</dt>
-            <dd>{{ startedAt }}</dd>
-          </div>
-          <div v-if="run.duration">
-            <dt>Длительность</dt>
-            <dd>{{ formatShortDuration(run.duration) }}</dd>
-          </div>
-          <div>
-            <dt>UUID</dt>
-            <dd class="mono" :title="run.uuid">{{ run.uuid.slice(0, 8) }}</dd>
-          </div>
-          <div>
-            <dt>Источник</dt>
-            <dd>history.jsonl</dd>
-          </div>
-        </dl>
-
-        <div class="run-stats">
-          <div class="run-stat">
-            <span>Pass rate</span>
-            <strong :class="`rate--${rateTone}`">{{ run.passRate }}%</strong>
-          </div>
-          <div class="run-stat">
-            <span>Всего</span>
-            <strong>{{ run.total }}</strong>
-          </div>
-          <div class="run-stat">
-            <span><i class="legend-dot legend-dot--failed"></i>Сбой</span>
-            <strong>{{ run.failed }}</strong>
-          </div>
-          <div class="run-stat">
-            <span><i class="legend-dot legend-dot--broken"></i>Сломано</span>
-            <strong>{{ run.broken }}</strong>
-          </div>
-          <div class="run-stat">
-            <span><i class="legend-dot legend-dot--passed"></i>Пройдено</span>
-            <strong>{{ run.passed }}</strong>
-          </div>
-          <div v-if="run.other" class="run-stat">
-            <span><i class="legend-dot legend-dot--other"></i>Прочее</span>
-            <strong>{{ run.other }}</strong>
-          </div>
-        </div>
-        <span v-if="run.total" class="stack-bar run-bar" aria-hidden="true">
-          <span class="stack-bar-seg stack-bar-seg--passed" :style="{ width: shares.passed }"></span>
-          <span class="stack-bar-seg stack-bar-seg--failed" :style="{ width: shares.failed }"></span>
-          <span class="stack-bar-seg stack-bar-seg--broken" :style="{ width: shares.broken }"></span>
-        </span>
-      </header>
+      <EntityToolbar
+        :title="run.name"
+        :date-time="parsed ? `${parsed.date.slice(0, 5)} · ${parsed.time}` : null"
+        :user="parsed?.user"
+        :status="run.status"
+        :tone="tone"
+        :pass-rate="run.total ? run.passRate : null"
+        :shares="run.total ? shares : null"
+        :counts="counts"
+        :meta="meta"
+        :link="
+          matchingReport
+            ? { label: 'Открыть Allure-отчёт', to: { name: 'report-by-id', params: { reportId: matchingReport.id } } }
+            : null
+        "
+        :reset-key="run.uuid"
+      />
 
       <div class="run-results">
         <TestResultList
