@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import DashboardTestDetailsPanel from './dashboard/DashboardTestDetailsPanel.vue'
 import TestResultList from '../results/TestResultList.vue'
@@ -15,6 +15,7 @@ import {
   getReportTitle,
   getReportTone,
   parseReportName,
+  pluralRu,
 } from '../../../utils/reports'
 import type { Report } from '../../../types/reports'
 
@@ -46,6 +47,50 @@ const tone = computed(() => (props.report ? getReportTone(props.report) : 'other
 const passRate = computed(() => (props.report ? getPassRate(props.report) : 0))
 const rateTone = computed(() => (passRate.value < 70 ? 'failed' : passRate.value < 90 ? 'broken' : 'ok'))
 
+type ViewerMenu = 'info' | 'more'
+const openMenu = ref<ViewerMenu | null>(null)
+const toolbar = ref<HTMLElement | null>(null)
+
+function toggleMenu(menu: ViewerMenu) {
+  openMenu.value = openMenu.value === menu ? null : menu
+}
+
+function runAction(action: 'download' | 'delete') {
+  openMenu.value = null
+  if (!props.report) return
+  if (action === 'download') emit('download', props.report.id)
+  else emit('delete', props.report.id)
+}
+
+function onDocumentClick(event: MouseEvent) {
+  if (openMenu.value && toolbar.value && !toolbar.value.contains(event.target as Node)) openMenu.value = null
+}
+
+function closeMenu() {
+  openMenu.value = null
+}
+
+function onDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') openMenu.value = null
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('keydown', onDocumentKeydown)
+  // Clicks inside the Allure iframe never reach the document; the window loses focus instead.
+  window.addEventListener('blur', closeMenu)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('keydown', onDocumentKeydown)
+  window.removeEventListener('blur', closeMenu)
+})
+
+watch(reportId, () => {
+  openMenu.value = null
+})
+
 const stats = computed(() => {
   const s = props.report?.stats
   if (!s) return null
@@ -61,120 +106,118 @@ const stats = computed(() => {
 <template>
   <section class="viewer" :aria-label="report ? `Отчёт ${title}` : 'Отчёт не выбран'">
     <template v-if="report">
-      <header class="viewer-head">
-        <div class="viewer-title-row">
-          <div class="viewer-title">
-            <h2>{{ title }}</h2>
-            <span class="status-pill" :class="`status-pill--${tone}`">{{ report.status || tone }}</span>
-          </div>
+      <header ref="toolbar" class="viewer-toolbar">
+        <div class="viewer-tabs" role="tablist" aria-label="Содержимое отчёта">
+          <button type="button" role="tab" :aria-selected="activeTab === 'allure'" @click="activeTab = 'allure'">
+            Allure-отчёт
+          </button>
+          <button type="button" role="tab" :aria-selected="activeTab === 'results'" @click="activeTab = 'results'">
+            Результаты
+            <span v-if="incidentsCount" class="viewer-tab-badge">{{ incidentsCount }}</span>
+          </button>
+        </div>
+
+        <span class="viewer-divider" aria-hidden="true"></span>
+
+        <div class="viewer-title" :title="title">
+          <h2 v-if="parsed" class="viewer-title-date">{{ parsed.date.slice(0, 5) }} · {{ parsed.time }}</h2>
+          <h2 v-else class="viewer-title-text">{{ title }}</h2>
+          <span v-if="parsed?.user" class="viewer-title-user">{{ parsed.user }}</span>
+          <span class="status-pill" :class="`status-pill--${tone}`">{{ report.status || tone }}</span>
+        </div>
+
+        <div class="viewer-summary">
+          <template v-if="stats">
+            <strong class="viewer-rate" :class="`rate--${rateTone}`" title="Pass rate">{{ passRate }}%</strong>
+            <span v-if="stats.total" class="stack-bar viewer-bar" aria-hidden="true">
+              <span class="stack-bar-seg stack-bar-seg--passed" :style="{ width: stats.shares.passed }"></span>
+              <span class="stack-bar-seg stack-bar-seg--failed" :style="{ width: stats.shares.failed }"></span>
+              <span class="stack-bar-seg stack-bar-seg--broken" :style="{ width: stats.shares.broken }"></span>
+            </span>
+          </template>
+
           <div class="viewer-actions">
-            <a v-if="viewerSrc" class="ghost-button" :href="viewerSrc" target="_blank" rel="noopener">
+            <button
+              type="button"
+              class="icon-button viewer-info-button"
+              aria-label="Подробнее об отчёте"
+              title="Подробнее об отчёте"
+              :aria-expanded="openMenu === 'info'"
+              aria-controls="viewer-info"
+              @click="toggleMenu('info')"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8v.5" /></svg>
+            </button>
+            <a
+              v-if="viewerSrc"
+              class="icon-button"
+              :href="viewerSrc"
+              target="_blank"
+              rel="noopener"
+              aria-label="Открыть отдельно"
+              title="Открыть отдельно"
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M14 4h6v6M20 4l-9 9" />
                 <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
               </svg>
-              Открыть отдельно
             </a>
-            <button type="button" class="icon-button" aria-label="Скачать ZIP" title="Скачать ZIP" @click="emit('download', report.id)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16" /></svg>
-            </button>
             <button
               type="button"
-              class="icon-button icon-button--danger"
-              aria-label="Удалить отчёт"
-              title="Удалить отчёт"
-              @click="emit('delete', report.id)"
+              class="icon-button"
+              aria-label="Ещё действия"
+              title="Скачать или удалить"
+              aria-haspopup="menu"
+              :aria-expanded="openMenu === 'more'"
+              @click="toggleMenu('more')"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.5M12 12h.5M19 12h.5" /></svg>
             </button>
           </div>
         </div>
 
-        <dl class="viewer-meta">
-          <div v-if="parsed?.user">
-            <dt>Автор</dt>
-            <dd>{{ parsed.user }}</dd>
+        <div v-if="openMenu === 'info'" id="viewer-info" class="viewer-popover viewer-info" role="dialog" aria-label="Об отчёте">
+          <div v-if="stats" class="viewer-counts">
+            <span><b>{{ stats.total }}</b> {{ pluralRu(stats.total, ['тест', 'теста', 'тестов']) }}</span>
+            <span><i class="legend-dot legend-dot--passed"></i>пройдено <b>{{ stats.passed }}</b></span>
+            <span><i class="legend-dot legend-dot--failed"></i>сбой <b>{{ stats.failed }}</b></span>
+            <span><i class="legend-dot legend-dot--broken"></i>сломано <b>{{ stats.broken }}</b></span>
+            <span>нестабильно <b>{{ stats.flaky }}</b></span>
+            <span><i class="legend-dot legend-dot--other"></i>прочее <b>{{ stats.other }}</b></span>
           </div>
-          <div v-if="parsed">
-            <dt>Прогон</dt>
-            <dd>{{ parsed.date }}, {{ parsed.time }}</dd>
-          </div>
-          <div>
+          <dl class="viewer-meta">
+            <template v-if="parsed?.user">
+              <dt>Автор</dt>
+              <dd>{{ parsed.user }}</dd>
+            </template>
+            <template v-if="parsed">
+              <dt>Прогон</dt>
+              <dd>{{ parsed.date }}, {{ parsed.time }}</dd>
+            </template>
+            <template v-if="report.duration">
+              <dt>Длительность</dt>
+              <dd>{{ formatDuration(report.duration) }}</dd>
+            </template>
             <dt>Загружен</dt>
             <dd>{{ formatDate(report.created_at) }}</dd>
-          </div>
-          <div v-if="report.duration">
-            <dt>Длительность</dt>
-            <dd>{{ formatDuration(report.duration) }}</dd>
-          </div>
-          <div>
             <dt>Размер</dt>
             <dd>{{ formatSize(report.size) }}</dd>
-          </div>
-          <div>
             <dt>ID</dt>
             <dd class="mono" :title="report.id">{{ report.id.slice(0, 8) }}</dd>
-          </div>
-        </dl>
+          </dl>
+        </div>
 
-        <template v-if="stats">
-          <div class="viewer-stats">
-            <div class="viewer-stat">
-              <span>Pass rate</span>
-              <strong :class="`rate--${rateTone}`">{{ passRate }}%</strong>
-            </div>
-            <div class="viewer-stat">
-              <span>Всего</span>
-              <strong>{{ stats.total }}</strong>
-            </div>
-            <div class="viewer-stat">
-              <span><i class="legend-dot legend-dot--failed"></i>Сбой</span>
-              <strong>{{ stats.failed }}</strong>
-            </div>
-            <div class="viewer-stat">
-              <span><i class="legend-dot legend-dot--broken"></i>Сломано</span>
-              <strong>{{ stats.broken }}</strong>
-            </div>
-            <div class="viewer-stat">
-              <span><i class="legend-dot legend-dot--passed"></i>Пройдено</span>
-              <strong>{{ stats.passed }}</strong>
-            </div>
-            <div class="viewer-stat">
-              <span>Нестабильно</span>
-              <strong>{{ stats.flaky }}</strong>
-            </div>
-            <div v-if="stats.other" class="viewer-stat">
-              <span><i class="legend-dot legend-dot--other"></i>Прочее</span>
-              <strong>{{ stats.other }}</strong>
-            </div>
-          </div>
-          <span v-if="stats.total" class="stack-bar viewer-bar" aria-hidden="true">
-            <span class="stack-bar-seg stack-bar-seg--passed" :style="{ width: stats.shares.passed }"></span>
-            <span class="stack-bar-seg stack-bar-seg--failed" :style="{ width: stats.shares.failed }"></span>
-            <span class="stack-bar-seg stack-bar-seg--broken" :style="{ width: stats.shares.broken }"></span>
-          </span>
-        </template>
+        <div v-if="openMenu === 'more'" class="viewer-popover viewer-menu" role="menu">
+          <button type="button" role="menuitem" @click="runAction('download')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16" /></svg>
+            Скачать ZIP
+          </button>
+          <button type="button" role="menuitem" class="viewer-menu-danger" @click="runAction('delete')">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
+            Удалить отчёт
+          </button>
+        </div>
       </header>
-
-      <div class="viewer-tabs" role="tablist" aria-label="Содержимое отчёта">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="activeTab === 'allure'"
-          @click="activeTab = 'allure'"
-        >
-          Allure-отчёт
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="activeTab === 'results'"
-          @click="activeTab = 'results'"
-        >
-          Результаты тестов
-          <span v-if="incidentsCount" class="viewer-tab-badge">{{ incidentsCount }}</span>
-        </button>
-      </div>
 
       <div v-if="activeTab === 'results'" class="viewer-results" role="tabpanel">
         <TestResultList
