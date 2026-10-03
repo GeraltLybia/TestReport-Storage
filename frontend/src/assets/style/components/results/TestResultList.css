@@ -100,6 +100,11 @@
   cursor: pointer;
 }
 
+.change-stat.is-active {
+  border-color: currentColor;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
 .change-stat strong {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -459,4 +464,24 @@ summary.result-row:hover {
   .result-duration {
     display: none;
   }
+}
+
+.results-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.results-filter > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { describeChange, formatDate, formatShortDuration, pluralRu, splitTestName, statusTone } from '../../../utils/reports'
-import type { ResultChanges, ResultStatusFilter, TestResultItem } from '../../../types/reports'
+import type { ResultChange, ResultChanges, ResultStatusFilter, TestResultItem } from '../../../types/reports'
 
 const props = defineProps<{
   items: TestResultItem[]
@@ -25,10 +25,47 @@ const emit = defineEmits<{
 
 const query = ref('')
 
-const STAT_FILTER: Record<string, ResultStatusFilter> = {
-  'still-failing': 'incidents',
-  'new-test': 'all',
+/**
+ * A click on a comparison counter shows exactly those tests: all results are
+ * loaded and filtered by their `change` on the client.
+ */
+const changeFilter = ref<ResultChange | null>(null)
+
+const CHANGE_TITLES: Record<ResultChange, string> = {
+  new_failure: 'Новые падения',
+  still_failing: 'Падают повторно',
+  fixed: 'Починены',
+  new_test: 'Новые тесты',
 }
+
+function selectChange(change: ResultChange) {
+  if (changeFilter.value === change) {
+    clearChange()
+    return
+  }
+  changeFilter.value = change
+  statusFilter.value = 'all'
+}
+
+function clearChange() {
+  changeFilter.value = null
+}
+
+function setStatus(status: ResultStatusFilter) {
+  changeFilter.value = null
+  statusFilter.value = status
+}
+
+// Another report or run resets the status filter; the change filter goes with it.
+watch(statusFilter, (status) => {
+  if (status !== 'all') changeFilter.value = null
+})
+watch(
+  () => props.changes,
+  (changes) => {
+    if (!changes) changeFilter.value = null
+  },
+)
 
 const changeStats = computed(() => {
   const changes = props.changes
@@ -36,17 +73,24 @@ const changeStats = computed(() => {
   return [
     {
       key: 'new-failure',
+      change: 'new_failure' as ResultChange,
       count: changes.newFailures,
       label: pluralRu(changes.newFailures, ['новое падение', 'новых падения', 'новых падений']),
     },
     {
       key: 'still-failing',
+      change: 'still_failing' as ResultChange,
       count: changes.stillFailing,
       label: pluralRu(changes.stillFailing, ['падает повторно', 'падают повторно', 'падают повторно']),
     },
-    { key: 'fixed', count: changes.fixed, label: pluralRu(changes.fixed, ['починен', 'починены', 'починены']) },
+    {
+      key: 'fixed',
+      change: 'fixed' as ResultChange,
+      count: changes.fixed, label: pluralRu(changes.fixed, ['починен', 'починены', 'починены']),
+    },
     {
       key: 'new-test',
+      change: 'new_test' as ResultChange,
       count: changes.newTests,
       label: pluralRu(changes.newTests, ['новый тест', 'новых теста', 'новых тестов']),
     },
@@ -69,6 +113,7 @@ function previousText(item: TestResultItem) {
 const rows = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return props.items
+    .filter((item) => !changeFilter.value || item.change === changeFilter.value)
     .filter(
       (item) =>
         !needle ||
@@ -92,7 +137,12 @@ const rows = computed(() => {
     })
 })
 
+const changeFilterCount = computed(() =>
+  changeFilter.value ? props.items.filter((item) => item.change === changeFilter.value).length : 0,
+)
+
 const emptyText = computed(() => {
+  if (changeFilter.value) return 'Таких тестов нет.'
   if (statusFilter.value === 'incidents') return 'Падений нет — все тесты прошли.'
   if (statusFilter.value === 'changes') return 'По сравнению с прошлыми запусками ничего не изменилось.'
   return 'Здесь нет результатов.'
@@ -113,8 +163,10 @@ function openTest(testKey: string | null | undefined) {
         :key="stat.key"
         type="button"
         class="change-stat"
-        :class="`change-stat--${stat.key}`"
-        @click="statusFilter = STAT_FILTER[stat.key] ?? 'changes'"
+        :class="[`change-stat--${stat.key}`, { 'is-active': changeFilter === stat.change }]"
+        :aria-pressed="changeFilter === stat.change"
+        :title="changeFilter === stat.change ? 'Сбросить фильтр' : 'Показать эти тесты'"
+        @click="selectChange(stat.change)"
       >
         <strong>{{ stat.count }}</strong>
         {{ stat.label }}
@@ -123,24 +175,37 @@ function openTest(testKey: string | null | undefined) {
 
     <div class="results-toolbar">
       <div class="results-segmented" role="group" aria-label="Какие результаты показывать">
-        <button type="button" :aria-pressed="statusFilter === 'incidents'" @click="statusFilter = 'incidents'">
+        <button
+          type="button"
+          :aria-pressed="!changeFilter && statusFilter === 'incidents'"
+          @click="setStatus('incidents')"
+        >
           Падения<span v-if="incidentsCount !== undefined" class="results-count">{{ incidentsCount }}</span>
         </button>
         <button
           v-if="changes"
           type="button"
-          :aria-pressed="statusFilter === 'changes'"
-          @click="statusFilter = 'changes'"
+          :aria-pressed="!changeFilter && statusFilter === 'changes'"
+          @click="setStatus('changes')"
         >
           Изменения<span class="results-count results-count--neutral">{{ changesCount }}</span>
         </button>
-        <button type="button" :aria-pressed="statusFilter === 'all'" @click="statusFilter = 'all'">Все тесты</button>
+        <button type="button" :aria-pressed="!changeFilter && statusFilter === 'all'" @click="setStatus('all')">
+          Все тесты
+        </button>
       </div>
       <label class="results-search">
         <span class="visually-hidden">Поиск по тестам</span>
         <input v-model="query" type="search" placeholder="Тест или текст ошибки" />
       </label>
     </div>
+
+    <p v-if="changeFilter" class="results-filter">
+      <span>
+        {{ CHANGE_TITLES[changeFilter] }}<span class="results-count results-count--neutral">{{ changeFilterCount }}</span>
+      </span>
+      <button type="button" class="link-button" @click="clearChange()">Сбросить</button>
+    </p>
 
     <div v-if="error" class="results-state results-state--error" role="alert">
       <p>{{ error }}</p>
