@@ -1049,6 +1049,18 @@
   cursor: pointer;
 }
 
+.cov-graph-fullscreen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cov-graph-fullscreen[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .cov-graph-stage {
   position: absolute;
   top: 0;
@@ -1178,6 +1190,43 @@
 .cov-type-detail h2 {
   margin: 0;
   font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.cov-type-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cov-type-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cov-type-detail-close:hover {
+  color: var(--text);
+}
+
+.cov-type-detail-close svg,
+.cov-graph-fullscreen svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .cov-type-detail-grid {
@@ -1259,5 +1308,77 @@
 @media (max-width: 640px) {
   .cov-view {
     padding: 1.25rem 1rem 2rem;
+  }
+}
+
+/* ───────────── Full screen schema view ───────────── */
+
+.cov-graph-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cov-graph-shell.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: 0.75rem;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.cov-graph-shell.is-fullscreen.has-detail {
+  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr) minmax(18rem, 24rem);
+}
+
+.cov-graph-shell.is-fullscreen::backdrop {
+  background: var(--bg);
+}
+
+.is-fullscreen .cov-graph-layout {
+  display: contents;
+}
+
+.is-fullscreen .cov-types {
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+}
+
+.is-fullscreen .cov-graph {
+  height: auto;
+  min-height: 0;
+}
+
+.is-fullscreen .cov-type-detail {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.is-fullscreen .cov-type-detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.is-fullscreen .cov-field-table {
+  max-height: none;
+}
+
+@media (max-width: 900px) {
+  .cov-graph-shell.is-fullscreen,
+  .cov-graph-shell.is-fullscreen.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .is-fullscreen .cov-types,
+  .is-fullscreen .cov-type-detail {
+    display: none;
   }
 }
