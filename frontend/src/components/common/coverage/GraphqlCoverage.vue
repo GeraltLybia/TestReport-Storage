@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { GraphqlCoverageResult, GraphqlField, GraphqlTypeCoverage } from '../../../types/coverage'
 
@@ -185,6 +185,66 @@ function fit() {
 watch(showAll, () => void nextTick(fit))
 onMounted(() => void nextTick(fit))
 
+// ─── full screen ───
+// The type list, the graph and the selected type's details open over the
+// whole screen. Native Fullscreen API first, a fixed overlay as a fallback.
+const shell = ref<HTMLElement | null>(null)
+const fullscreen = ref(false)
+let nativeFullscreen = false
+
+async function enterFullscreen() {
+  fullscreen.value = true
+  const el = shell.value
+  if (el?.requestFullscreen) {
+    try {
+      await el.requestFullscreen()
+      nativeFullscreen = true
+    } catch {
+      nativeFullscreen = false
+    }
+  }
+  await nextTick()
+  fit()
+}
+
+async function exitFullscreen() {
+  if (nativeFullscreen && document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => undefined)
+  }
+  nativeFullscreen = false
+  fullscreen.value = false
+  await nextTick()
+  fit()
+}
+
+function toggleFullscreen() {
+  void (fullscreen.value ? exitFullscreen() : enterFullscreen())
+}
+
+function onFullscreenChange() {
+  // Esc in native full screen leaves it without our button.
+  if (nativeFullscreen && !document.fullscreenElement) {
+    nativeFullscreen = false
+    fullscreen.value = false
+    void nextTick(fit)
+  }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && fullscreen.value && !nativeFullscreen) void exitFullscreen()
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('keydown', onKeydown)
+  if (nativeFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+})
+
 // ─── side lists & details ───
 const typeList = computed(() => {
   const needle = query.value.trim().toLowerCase()
@@ -211,12 +271,16 @@ function selectType(name: string, focus = true) {
   selectedFieldName.value = null
   if (!focus) return
   const node = layout.value.nodes.find((item) => item.type.name === name)
-  const el = viewport.value
-  if (node && el) {
-    offset.value = { x: el.clientWidth / 2 - (node.x + NODE_WIDTH / 2) * scale.value, y: 40 - node.y * scale.value }
-  } else if (!node && !showAll.value) {
-    showAll.value = true
+  if (!node) {
+    if (!showAll.value) showAll.value = true
+    return
   }
+  // The details panel can change the graph width (full screen), so center after it renders.
+  void nextTick(() => {
+    const el = viewport.value
+    if (!el) return
+    offset.value = { x: el.clientWidth / 2 - (node.x + NODE_WIDTH / 2) * scale.value, y: 64 - node.y * scale.value }
+  })
 }
 
 const s = computed(() => props.result.summary)
@@ -249,6 +313,7 @@ const s = computed(() => props.result.summary)
     </article>
   </section>
 
+  <div ref="shell" class="cov-graph-shell" :class="{ 'is-fullscreen': fullscreen, 'has-detail': selectedType }">
   <div class="cov-graph-layout">
     <aside class="cov-card cov-types" aria-label="Типы">
       <input v-model="query" type="search" class="cov-input" placeholder="Тип или поле" aria-label="Поиск по схеме" />
@@ -287,6 +352,21 @@ const s = computed(() => props.result.summary)
         <button type="button" aria-label="Приблизить" @click="zoomBy(1.2)">+</button>
         <button type="button" aria-label="Отдалить" @click="zoomBy(1 / 1.2)">−</button>
         <button type="button" @click="fit()">Вписать</button>
+        <button
+          type="button"
+          class="cov-graph-fullscreen"
+          :aria-label="fullscreen ? 'Свернуть' : 'На весь экран'"
+          :title="fullscreen ? 'Свернуть (Esc)' : 'На весь экран'"
+          :aria-pressed="fullscreen"
+          @click="toggleFullscreen()"
+        >
+          <svg v-if="!fullscreen" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          </svg>
+        </button>
       </div>
       <p v-if="!layout.nodes.length" class="cov-empty">Нет типов для отображения.</p>
       <div
@@ -332,7 +412,12 @@ const s = computed(() => props.result.summary)
   </div>
 
   <section v-if="selectedType" class="cov-card cov-type-detail" :aria-label="`Тип ${selectedType.name}`">
-    <h2 class="cov-mono">{{ selectedType.name }}</h2>
+    <div class="cov-type-detail-head">
+      <h2 class="cov-mono">{{ selectedType.name }}</h2>
+      <button type="button" class="cov-type-detail-close" aria-label="Закрыть" title="Закрыть" @click="selectedTypeName = null">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
     <div class="cov-type-detail-grid">
       <div class="cov-field-table">
         <button
@@ -378,6 +463,8 @@ const s = computed(() => props.result.summary)
       </div>
     </div>
   </section>
+
+  </div>
 
   <section v-if="result.invalid.length" class="cov-card cov-unknown" aria-label="Невалидные запросы">
     <h2>Запросы, не прошедшие валидацию по схеме</h2>
