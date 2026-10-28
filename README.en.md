@@ -117,6 +117,23 @@ How coverage is calculated:
 - GraphQL: queries are validated and walked over the schema with `graphql-core`; fields, arguments, fragments and unions are counted
 - A measurement is a snapshot stored in `storage/coverage/<id>/` (spec, parameters, result)
 
+## Jira API
+- `GET /api/jira/config` - whether the integration is on, Jira URL, project
+- `GET /api/jira/meta` - issue type, priorities and components of the project (from createmeta, cached for 10 minutes)
+- `GET /api/jira/draft?report_id=&test_id=` - bug draft for a test: steps by section, stand, author, attachments, suggested summary and labels, issues already filed
+- `POST /api/jira/preview` - issue description in Jira wiki markup for the chosen steps and log mode
+- `POST /api/jira/issues` - file a bug: issue, attachments, link to the failure
+- `POST /api/jira/issues/{key}/comments` - add a repeated failure as a comment to an existing issue
+- `GET /api/jira/links?report_id=` - issues filed for the tests of a report, with statuses from Jira
+
+How a bug is built:
+- Steps come from Allure in order: setup, test, teardown. Consecutive steps with the same name (waits, retries) fold into a group of attempts; the last one goes into the issue by default. The same step repeated elsewhere in the scenario stays a separate step
+- The default selection is the path to the failure: top-level test steps except skipped ones plus the chain of steps down to the failed one. Setup and teardown are off unless the test broke there
+- A step's request, the stand and the failing request body come from the steps' JSON attachments (`request_line`, `response_status_code`, `request_body`, `response_body`). The stand is the most called host without the port
+- The test author is `User` from the report's `widgets/variables.json`, suggested as the assignee
+- Logs and request dumps are masked before upload (auth headers, tokens, passwords, JWT)
+- The issue link is stored in `storage/jira/links.json` by test and error signature; issues of other tests with the same signature are shown as possible duplicates
+
 ## UI
 Pages (`http://localhost:9999` in Docker deployment or `http://localhost:5173` in frontend dev mode):
 - `/dashboard` - quality dashboard
@@ -148,6 +165,19 @@ Backend environment variables:
 - `APP_HISTORY_MAX_FILE_SIZE_MB` - maximum `history.jsonl` size (default: `100`)
 - `APP_MAX_INDEXED_RUNS` - how many latest runs the history index keeps (default: `1000`)
 - `APP_CORS_ORIGINS` - comma-separated allowed origins when UI and backend run on different hosts
+
+Jira integration (Server / Data Center 9.x, issues are filed by a service account):
+- `JIRA_BASE_URL` - Jira URL, e.g. `https://jira.company.com`
+- `JIRA_TOKEN` - Personal Access Token of the service account
+- `JIRA_PROJECT_KEY` - project bugs are filed in
+- `JIRA_ISSUE_TYPE` - issue type (default: `Bug`)
+- `JIRA_DEFAULT_LABELS` - comma-separated labels of every issue (default: `autotest`)
+- `JIRA_VERIFY_SSL` - `false` to skip Jira certificate verification; `JIRA_CA_BUNDLE` - path to a custom CA
+- `JIRA_MAX_ATTACHMENT_MB` - maximum attachment size (default: `10`)
+- `JIRA_STAND_NAMES` - stand names by host: `host=stage,host2=dev`
+- `JIRA_MASK_KEYS` - extra comma-separated keys whose values are masked
+- `JIRA_TIMEOUT_SECONDS` - Jira request timeout (default: `20`)
+- `APP_PUBLIC_URL` - TestReport Storage URL for links from the issue to the report and the Allure test
 
 Retention behavior:
 - After uploading a new report, if the total count exceeds `APP_MAX_REPORTS`,

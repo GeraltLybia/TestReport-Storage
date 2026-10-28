@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from .config import get_settings
+from .config import get_jira_settings, get_settings
 from .services.reporting import (
     HistoryAnalyticsService,
     HistoryIndexService,
@@ -51,3 +51,10 @@ def get_coverage_service():
     from .services.coverage.service import CoverageService
 
     return CoverageService(get_storage_context())
+
+
+@lru_cache(maxsize=1)
+def get_jira_service():
+    from .services.jira.service import JiraService
+
+    return JiraService(get_storage_context(), get_jira_settings())

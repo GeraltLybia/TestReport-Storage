@@ -5,6 +5,12 @@ services:
     environment:
       APP_STORAGE_ROOT: /app/storage
       APP_MAX_REPORTS: 10
+      # Jira: bugs from failed tests, filed by a service account (see README)
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-}
+      JIRA_TOKEN: ${JIRA_TOKEN:-}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-}
+      JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
     restart: unless-stopped
     volumes:
       - ./storage:/app/storage
