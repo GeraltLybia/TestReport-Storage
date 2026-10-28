@@ -160,7 +160,7 @@ Frontend dev server: `http://localhost:5173`
    JIRA_PROJECT_KEY=CLM
    APP_PUBLIC_URL=https://test-reports.company.ru
    # по необходимости
-   JIRA_STAND_NAMES=244.lnsk.infra.innoseti.ru=stage
+   JIRA_STAND_NAMES=stand=stage
    JIRA_DEFAULT_LABELS=autotest
    ```
    `APP_PUBLIC_URL` — адрес TestReport Storage, по нему в задаче появляются ссылки на отчёт и на тест в Allure. Полный список переменных — в разделе [Конфигурация](#конфигурация)
