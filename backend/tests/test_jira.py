@@ -186,6 +186,19 @@ def test_default_selection_is_path_to_failure(storage):
     assert "Получаем статус заказа" not in titles  # polling attempts are nested and passed
 
 
+def test_timed_out_wait_takes_its_last_poll(storage):
+    test, _ = _sections(storage)
+    wait = test.result["steps"][2]
+    wait.update(status="broken", message="TimeoutError: статус paid не появился")
+    test.result["status"] = "broken"
+    test.result["steps"] = test.result["steps"][:3]
+    sections = build_step_sections(test)
+    group = sections[1].steps[2].children[0]
+
+    assert sections[1].steps[2].failure_origin
+    assert [a.id for a in group.attempts if a.id in default_selection(sections)] == [group.attempts[-1].id]
+
+
 def test_stand_drops_ports_and_the_most_called_host_wins():
     stand = detect_stand(
         ["http://stand.local:4001/a", "http://stand.local:18081/b", "http://other:8090/c", "http://other:8090/d"]

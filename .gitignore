@@ -32,3 +32,6 @@ dist-ssr
 scripts/
 demo_storage.py 
 tests/
+
+# local secrets (JIRA_TOKEN)
+.env

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import DashboardTestDetailsPanel from './dashboard/DashboardTestDetailsPanel.vue'
 import EntityToolbar, {
@@ -7,8 +7,11 @@ import EntityToolbar, {
   type ToolbarMenuItem,
   type ToolbarMeta,
 } from '../layout/EntityToolbar.vue'
+import BugCreateDialog, { type BugFiled } from '../jira/BugCreateDialog.vue'
+import BugFiledToast from '../jira/BugFiledToast.vue'
 import TestResultList from '../results/TestResultList.vue'
 import { fetchReportResults } from '../../../api/reports'
+import { useJiraConfig, useJiraLinks } from '../../../composables/useJira'
 import { useTestDetailsDrawer } from '../../../composables/useTestDetailsDrawer'
 import { useTestResults } from '../../../composables/useTestResults'
 
@@ -45,6 +48,27 @@ const results = useTestResults(
 const resultsStatus = results.statusFilter
 const testDrawer = useTestDetailsDrawer()
 const incidentsCount = computed(() => (props.report?.stats?.failed ?? 0) + (props.report?.stats?.broken ?? 0))
+
+// Bugs in Jira: the toolbar button opens the dialog with a test to pick, a row button with its test.
+const jiraConfig = useJiraConfig()
+const bugDialog = ref<{ testId: string | null } | null>(null)
+const filed = ref<BugFiled | null>(null)
+const jira = useJiraLinks(
+  reportId,
+  computed(() => activeTab.value === 'results' || bugDialog.value !== null),
+)
+
+function openBug(testId: string | null = null) {
+  bugDialog.value = { testId }
+}
+
+function onFiled(event: BugFiled) {
+  bugDialog.value = null
+  filed.value = event
+  void jira.reload()
+}
+
+watch(reportId, () => (bugDialog.value = null))
 const title = computed(() => (props.report ? getReportTitle(props.report) : ''))
 const parsed = computed(() => parseReportName(title.value))
 const tone = computed(() => (props.report ? getReportTone(props.report) : 'other'))
@@ -114,6 +138,16 @@ const menu = computed<ToolbarMenuItem[]>(() => {
         :menu="menu"
         :reset-key="reportId"
       >
+        <template v-if="incidentsCount" #actions>
+          <button type="button" class="bug-button" @click="openBug()">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 6a4 4 0 0 1 8 0" />
+              <rect x="6" y="6" width="12" height="14" rx="6" />
+              <path d="M12 10v10M3 13h3M18 13h3M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2" />
+            </svg>
+            Создать баг
+          </button>
+        </template>
         <template #tabs>
           <div class="viewer-tabs" role="tablist" aria-label="Содержимое отчёта">
             <button type="button" role="tab" :aria-selected="activeTab === 'allure'" @click="activeTab = 'allure'">
@@ -137,8 +171,11 @@ const menu = computed<ToolbarMenuItem[]>(() => {
           :changes="results.changes.value"
           :opening-test-key="testDrawer.loadingKey.value"
           :incidents-count="incidentsCount"
+          :bugs="true"
+          :jira-links="jira.links.value"
           @retry="results.reload()"
           @open-test="testDrawer.open($event)"
+          @create-bug="openBug($event)"
         />
         <p v-if="testDrawer.error.value" class="drawer-error" role="alert">{{ testDrawer.error.value }}</p>
       </div>
@@ -165,6 +202,18 @@ const menu = computed<ToolbarMenuItem[]>(() => {
       <h2>Выберите отчёт</h2>
       <p>Список отчётов — слева.</p>
     </div>
+
+    <BugCreateDialog
+      v-if="bugDialog && report"
+      :report-id="report.id"
+      :context="`Отчёт ${parsed ? `${parsed.date.slice(0, 5)} · ${parsed.time}` : title}${parsed?.user ? ` · ${parsed.user}` : ''}`"
+      :initial-test-id="bugDialog.testId"
+      :links="jira.links.value"
+      :config="jiraConfig"
+      @close="bugDialog = null"
+      @filed="onFiled"
+    />
+    <BugFiledToast v-if="filed" :key="filed.result.key + filed.type" :event="filed" @close="filed = null" />
 
     <DashboardTestDetailsPanel
       v-if="testDrawer.details.value"

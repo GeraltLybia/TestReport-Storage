@@ -9,7 +9,12 @@ services:
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_TOKEN: ${JIRA_TOKEN:-}
       JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-}
+      JIRA_ISSUE_TYPE: ${JIRA_ISSUE_TYPE:-Bug}
+      JIRA_DEFAULT_LABELS: ${JIRA_DEFAULT_LABELS:-autotest}
+      JIRA_STAND_NAMES: ${JIRA_STAND_NAMES:-}
+      JIRA_MASK_KEYS: ${JIRA_MASK_KEYS:-}
       JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
+      JIRA_CA_BUNDLE: ${JIRA_CA_BUNDLE:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
     restart: unless-stopped
     volumes:

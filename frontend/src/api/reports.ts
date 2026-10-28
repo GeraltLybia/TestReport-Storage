@@ -12,13 +12,13 @@ import type {
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
 
-function apiUrl(path: string) {
+export function apiUrl(path: string) {
   return `${API_BASE}${path}`
 }
 
 type ApiErrorDetail = string | Array<{ loc?: unknown; msg?: unknown; type?: unknown }> | null | undefined
 
-async function parseApiError(response: Response, fallback: string) {
+export async function parseApiError(response: Response, fallback: string) {
   const payload = (await response.json().catch(() => null)) as { detail?: ApiErrorDetail } | null
   const detail = payload?.detail
   if (typeof detail === 'string' && detail.trim()) return detail

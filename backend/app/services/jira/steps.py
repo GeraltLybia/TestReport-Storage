@@ -228,25 +228,27 @@ def build_step_sections(test: ReportTest) -> list[StepSection]:
 def default_selection(sections: list[StepSection]) -> list[str]:
     """«Путь до падения»: test steps of the top level without skipped ones, the steps
     leading to the failure, and only the last attempt of each folded repeat.
-    Setup and teardown are off unless the test broke there."""
+    Setup and teardown are off unless the test broke there. When the failed step
+    is a wait itself (timeout of a polling loop), its last poll is taken too:
+    it shows what the service answered."""
     selected: list[str] = []
 
-    def visit(nodes: list[StepNode], top_level: bool, section_id: str) -> None:
+    def visit(nodes: list[StepNode], top_level: bool, section_id: str, under_origin: bool) -> None:
         for node in nodes:
             if node.kind == "group":
                 last = node.attempts[-1]
-                wanted = node.on_failure_path or (top_level and section_id == "test")
+                wanted = node.on_failure_path or under_origin or (top_level and section_id == "test")
                 for attempt in node.attempts:
                     if attempt.on_failure_path or (wanted and attempt is last and last.status != "skipped"):
                         selected.append(attempt.id)
-                    visit(attempt.children, False, section_id)
+                    visit(attempt.children, False, section_id, False)
                 continue
             if node.on_failure_path or (top_level and section_id == "test" and node.status != "skipped"):
                 selected.append(node.id)
-            visit(node.children, False, section_id)
+            visit(node.children, False, section_id, node.failure_origin)
 
     for section in sections:
-        visit(section.steps, True, section.id)
+        visit(section.steps, True, section.id, False)
     return selected
 
 

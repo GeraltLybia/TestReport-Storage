@@ -154,3 +154,56 @@
   border-color: var(--danger-border);
   color: var(--danger);
 }
+
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.change-badge--new-failure {
+  background: var(--danger-soft);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.change-badge--fixed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.change-badge--new-test {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* Key and status of a Jira issue filed for a failure. */
+.jira-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 6px;
+  background: var(--jira-soft);
+  color: var(--jira);
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+a.jira-chip:hover {
+  text-decoration: underline;
+}
+
+.jira-chip svg {
+  width: 0.65rem;
+  height: 0.65rem;
+  fill: currentColor;
+}
