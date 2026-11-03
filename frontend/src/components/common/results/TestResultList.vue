@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import { describeChange, formatDate, formatShortDuration, pluralRu, splitTestName, statusTone } from '../../../utils/reports'
+import type { JiraIssueLink } from '../../../types/jira'
 import type { ResultChange, ResultChanges, ResultStatusFilter, TestResultItem } from '../../../types/reports'
 
 const props = defineProps<{
@@ -14,6 +15,10 @@ const props = defineProps<{
   changes?: ResultChanges | null
   /** Test key whose history is being loaded, to show a spinner on its button. */
   openingTestKey?: string | null
+  /** Show the «create bug» button on failed and broken tests. */
+  bugs?: boolean
+  /** Jira issues filed for failures, by test id. */
+  jiraLinks?: Record<string, JiraIssueLink>
 }>()
 
 const statusFilter = defineModel<ResultStatusFilter>('statusFilter', { required: true })
@@ -21,6 +26,7 @@ const statusFilter = defineModel<ResultStatusFilter>('statusFilter', { required:
 const emit = defineEmits<{
   retry: []
   openTest: [testKey: string]
+  createBug: [testId: string]
 }>()
 
 const query = ref('')
@@ -133,6 +139,8 @@ const rows = computed(() => {
         firstLine: item.message?.split('\n')[0] ?? '',
         badge: describeChange(item.change),
         previousText: props.changes ? previousText(item) : '',
+        jira: props.jiraLinks?.[item.id] ?? null,
+        canBug: !!props.bugs && (item.status === 'failed' || item.status === 'broken'),
       }
     })
 })
@@ -215,7 +223,7 @@ function openTest(testKey: string | null | undefined) {
     <p v-else-if="!items.length" class="results-state">{{ emptyText }}</p>
     <p v-else-if="!rows.length" class="results-state">Ничего не найдено.</p>
 
-    <ul v-else class="results-list" :aria-busy="loading">
+    <ul v-else class="results-list" :class="{ 'results-list--bugs': bugs }" :aria-busy="loading">
       <li v-for="row in rows" :key="row.id" class="result" :class="`result--${row.tone}`">
         <details v-if="row.message" class="result-details">
           <summary class="result-row">
@@ -231,6 +239,18 @@ function openTest(testKey: string | null | undefined) {
                 >
                   {{ row.badge.label }}
                 </span>
+                <a
+                  v-if="row.jira"
+                  class="jira-chip"
+                  :href="row.jira.url ?? undefined"
+                  target="_blank"
+                  rel="noopener"
+                  :title="row.jira.summary ?? 'Задача в Jira'"
+                  @click.stop
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 12l10 10 10-10zm0 5 5 5-5 5-5-5z" /></svg>
+                  {{ row.jira.key }}<template v-if="row.jira.status"> · {{ row.jira.status }}</template>
+                </a>
               </span>
               <span v-if="row.subtitle" class="result-subtitle">{{ row.subtitle }}</span>
               <span class="result-first-line">{{ row.firstLine }}</span>
@@ -248,6 +268,23 @@ function openTest(testKey: string | null | undefined) {
             >
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></svg>
             </button>
+            <span v-else-if="bugs" aria-hidden="true"></span>
+            <button
+              v-if="row.canBug"
+              type="button"
+              class="result-bug"
+              :class="{ 'is-hint': row.change === 'new_failure' && !row.jira }"
+              :aria-label="`Создать баг по тесту ${row.title}`"
+              :title="row.jira ? 'Баг уже заведён — создать ещё один' : 'Создать баг по этому тесту'"
+              @click.stop.prevent="emit('createBug', row.id)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 6a4 4 0 0 1 8 0" />
+                <rect x="6" y="6" width="12" height="14" rx="6" />
+                <path d="M12 10v10M3 13h3M18 13h3" />
+              </svg>
+            </button>
+            <span v-else-if="bugs" aria-hidden="true"></span>
           </summary>
           <div class="result-expanded">
             <pre class="result-message">{{ row.message }}</pre>
@@ -279,6 +316,18 @@ function openTest(testKey: string | null | undefined) {
               >
                 {{ row.badge.label }}
               </span>
+              <a
+                v-if="row.jira"
+                class="jira-chip"
+                :href="row.jira.url ?? undefined"
+                target="_blank"
+                rel="noopener"
+                :title="row.jira.summary ?? 'Задача в Jira'"
+                @click.stop
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 12l10 10 10-10zm0 5 5 5-5 5-5-5z" /></svg>
+                {{ row.jira.key }}<template v-if="row.jira.status"> · {{ row.jira.status }}</template>
+              </a>
             </span>
             <span v-if="row.subtitle" class="result-subtitle">{{ row.subtitle }}</span>
           </span>
@@ -295,6 +344,23 @@ function openTest(testKey: string | null | undefined) {
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></svg>
           </button>
+          <span v-else-if="bugs" aria-hidden="true"></span>
+          <button
+            v-if="row.canBug"
+            type="button"
+            class="result-bug"
+            :class="{ 'is-hint': row.change === 'new_failure' && !row.jira }"
+            :aria-label="`Создать баг по тесту ${row.title}`"
+            :title="row.jira ? 'Баг уже заведён — создать ещё один' : 'Создать баг по этому тесту'"
+            @click.stop.prevent="emit('createBug', row.id)"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 6a4 4 0 0 1 8 0" />
+              <rect x="6" y="6" width="12" height="14" rx="6" />
+              <path d="M12 10v10M3 13h3M18 13h3" />
+            </svg>
+          </button>
+          <span v-else-if="bugs" aria-hidden="true"></span>
         </div>
       </li>
     </ul>

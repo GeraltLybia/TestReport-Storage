@@ -9,8 +9,9 @@ export type ToolbarMenuItem = { label: string; icon: 'download' | 'delete'; dang
 
 /**
  * Compact header of a report or a run: optional tabs, date and time, author,
- * status, pass rate with a status bar, an info popover with counters and
- * metadata, an optional link and an optional "more" menu.
+ * status, pass rate with a status bar, page actions (the `actions` slot), an
+ * info popover with counters and metadata, an optional link and an optional
+ * "more" menu.
  */
 const props = defineProps<{
   title: string
@@ -98,6 +99,7 @@ watch(() => props.resetKey, close)
       </template>
 
       <div class="toolbar-actions">
+        <slot name="actions" />
         <button
           type="button"
           class="icon-button"

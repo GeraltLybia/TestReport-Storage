@@ -28,6 +28,7 @@ The logic is split by responsibility:
 - `app/services/reporting/history_index.py` - build/update logic for `history_index.json`
 - `app/services/reporting/analytics.py` - dashboard aggregates
 - `app/services/reporting/runs.py` - runs restored from the history index
+- `app/services/jira/` - Jira bugs: steps and stand from the report, description markup, Jira client, issue-to-failure links
 - `app/services/coverage/` - API coverage: log parsing, OpenAPI and GraphQL schema matching
 - `app/services/reporting/repositories/` - file-based repositories
 - `app/services/reporting/models.py` - internal typed models
@@ -82,6 +83,7 @@ Frontend dev server: `http://localhost:5173`
 - "Test results" tab for a report: failed and all tests read from the report's own Allure data
 - "Runs" section: runs restored from `history.jsonl`, paged from the server, with per-run test results
 - API coverage: REST via OpenAPI/Swagger and GraphQL via schema (SDL or introspection) from test log attachments; GraphQL Voyager-style schema graph
+- Jira bugs from failed report tests: steps, requests, stand, author, logs; issue-to-failure links and duplicate detection (see [Jira integration](#jira-integration))
 - `history.jsonl` upload/download with incremental index updates
 - Light and dark themes
 - Automatic report retention by limit (default: keep last 10 reports)
@@ -117,6 +119,100 @@ How coverage is calculated:
 - GraphQL: queries are validated and walked over the schema with `graphql-core`; fields, arguments, fragments and unions are counted
 - A measurement is a snapshot stored in `storage/coverage/<id>/` (spec, parameters, result)
 
+## Jira integration
+Bugs are filed in Jira Server / Data Center 9.x from failed tests of an uploaded report.
+The backend makes every Jira request as one service account with its Personal Access Token:
+TestReport Storage users need no Jira access, and the token never reaches the browser.
+
+### Features
+- **Where to file a bug**: the "Создать баг" button in the report header (the test is picked in the dialog) or the bug icon on a failed test row in the "Results" tab (the test is preselected). The icon is highlighted for new failures
+- **Steps to reproduce** come from Allure in order, split into setup, test and teardown. The default selection is the path to the failure: top-level steps except skipped ones plus the chain of steps down to the failed one; setup and teardown are off unless the test broke there. Presets "path to failure", "all", "none", and any step by its checkbox
+- **Repeats don't flood the issue**: consecutive steps with the same name (retries, status polling) fold into a group of attempts; the last one goes into the issue by default. When the wait step itself failed (a timeout), its last poll is taken — it shows what the service answered. The same step repeated elsewhere in the scenario stays a separate step
+- **Requests**: each step shows its request (`POST /api/v1/orders → 201`); the description gets the requests of the chosen steps plus the request and response bodies the test broke on. Log modes: step requests, full log (its beginning is cut when it exceeds Jira's 32 000 characters), no log
+- **Attachments**: test logs and screenshots are attached by default, the failing request dump on demand; size limit is `JIRA_MAX_ATTACHMENT_MB`
+- **Stand** — the most called host of the test without the port: services of one stand differ by port only (`host:4001`, `host:18081` → `http://host`). Stand names can be set in `JIRA_STAND_NAMES`
+- **Test author** — `User` from the report's `widgets/variables.json`; suggested as the assignee when Jira has such a user
+- **Dynamic form**: additional project fields appear automatically; required fields are marked `*` and checked before submission. Options and defaults come from Jira. Priority, assignee, components and labels are hidden when absent from the create screen
+- **Issue fields**: summary (`[Автотест] Test: Error type — message`, editable), priority and components from the project, labels (`JIRA_DEFAULT_LABELS` + test tags), Environment (stand and run). The expected result is required — a person writes it
+- **Preview** of the description and a "Jira markup" tab with the exact text that is sent
+- **Masking**: auth headers, Bearer tokens, JWTs and values of `password`, `token`, `secret`, `api_key` and similar keys are removed from logs and dumps before upload (extra keys: `JIRA_MASK_KEYS`)
+- **Duplicates**: an issue is linked to a failure by test and error signature (`storage/jira/links.json`). A chip with the key and the Jira status shows on the test row — also in later reports where the test fails the same way. The dialog warns when an issue for this failure exists, or when another test with the same error already has one; the repeated failure can be added to it as a comment
+
+### What the tests need to provide
+The integration reads Allure 3 reports and needs no test changes if the tests already write:
+- **Allure steps** (`allure.step`) — they become the steps to reproduce
+- **A JSON attachment per step with the request and response** — the step request, the stand and the failing request body come from it:
+  ```json
+  {
+    "request_line": "POST http://stand.company.com:4001/api/v1/orders",
+    "request_body": {"sku": "SKU-1"},
+    "response_status_code": 201,
+    "response_body": {"id": 1}
+  }
+  ```
+  Without such attachments the steps still go into the issue and the stand is detected from URLs in the text log
+- **The `User` variable** in `widgets/variables.json` (set via `variables` in the Allure 3 report config) — the test author
+- **A text log** of the test (`.txt` / `.log`) — for the attachment and the full log mode
+
+### Setup
+1. **Service account.** Create a Jira user for autotests (e.g. `svc-autotest`) and grant it in the target project:
+   - *Browse Projects*, *Create Issues*, *Create Attachments*, *Add Comments* — required
+   - *Assign Issues* — to set the assignee; assignees need *Assignable User*
+   - global *Browse users and groups* — to check that the test author exists in Jira (without it the assignee is filled in unchecked)
+2. **Personal Access Token.** Log in as the service account → profile → *Personal Access Tokens* → *Create token*. Pick a generous expiry and note the date: once it expires Jira answers 401
+3. **Issue type and create screen.** Make sure the project has the `Bug` type (or set yours in `JIRA_ISSUE_TYPE`). The form reads `GET /rest/api/2/issue/createmeta/{project}/issuetypes/{issueTypeId}` and automatically adds fields using their names, schemas, required flags, allowed values and defaults. Supported editors include text, multiline text, numbers, dates, date/time, booleans, users, single/multiple selects and cascading selects. Required plugin fields with unknown schemas and no default are listed in `unsupportedRequired`; issue creation is blocked with an explanation
+4. **Environment variables.** For `docker compose`, put them into `.env` next to `docker-compose.yml` (the file is git-ignored):
+   ```bash
+   JIRA_BASE_URL=https://jira.company.com
+   JIRA_TOKEN=<personal access token>
+   JIRA_PROJECT_KEY=CLM
+   APP_PUBLIC_URL=https://test-reports.company.com
+   # optional
+   JIRA_STAND_NAMES=stand.company.com=stage
+   JIRA_DEFAULT_LABELS=autotest
+   ```
+   `APP_PUBLIC_URL` is the TestReport Storage address used for links from the issue to the report and the Allure test. All variables are listed in [Configuration](#configuration)
+5. **Jira certificate.** If Jira uses an internal CA, mount it into the container and point `JIRA_CA_BUNDLE` at it:
+   ```yaml
+   # docker-compose.override.yml
+   services:
+     backend:
+       volumes:
+         - ./certs/company-ca.pem:/app/certs/company-ca.pem:ro
+   ```
+   with `JIRA_CA_BUNDLE=/app/certs/company-ca.pem` in `.env`. `JIRA_VERIFY_SSL=false` disables verification entirely — test stands only
+6. **Restart and check.** `docker compose up -d`, then:
+   ```bash
+   curl http://localhost:8080/api/jira/config   # "enabled": true
+   curl http://localhost:8080/api/jira/meta     # issue type, priorities, components
+   ```
+   `meta.fieldDefinitions` describes dynamic fields; `meta.unsupportedRequired` lists required fields with unsupported schemas. These need an editor or a default configured in Jira (step 3). `GET /api/jira/meta?refresh=true` bypasses the cache; the dialog requests fresh fields when opened, and the backend rechecks metadata before creating an issue
+7. **First bug.** Open a report with failures → "Results" → the bug icon on a test → fill in the expected result → create. The issue chip then shows on the test row
+
+Without Jira configured the buttons stay: the draft and the preview work, and filing tells which variables are missing.
+
+### Troubleshooting
+- **"Jira отклонила токен"** — the token is wrong, revoked or expired: issue a new one (step 2)
+- **"Сервисному аккаунту не хватает прав"** — check the project permissions (step 1)
+- **"Jira: <field>: …"** on create — the project requires a field the form lacks, or a value does not fit the create screen: see `unsupportedRequired` in `/api/jira/meta`
+- **"В проекте нет типа задачи …"** — set `JIRA_ISSUE_TYPE` to the issue type name used in the project
+- **"Jira недоступна: ConnectError / ConnectTimeout"** — the backend cannot reach `JIRA_BASE_URL`: check the container network, proxy and `JIRA_TIMEOUT_SECONDS`
+- **Certificate error** — set `JIRA_CA_BUNDLE` (step 5)
+- **No assignee suggested** — the `User` login from the report does not exist in Jira, or the account lacks *Browse users and groups*; type the assignee manually
+- **Wrong stand** — the test calls a third-party service more often than the stand: the stand is the majority host, check `request_line` in the step attachments
+- **No status on the issue chip** — the issue was deleted or moved, or Jira is temporarily unavailable; the key stays and the status is fetched again next time the report is opened
+
+## Jira API
+- `GET /api/jira/config` - whether the integration is on, Jira URL, project
+- `GET /api/jira/meta` - create-screen fields: `fieldDefinitions` with schemas, required flags, options and defaults; `refresh=true` bypasses the 10-minute cache
+- `GET /api/jira/draft?report_id=&test_id=` - bug draft for a test: steps by section, stand, author, attachments, suggested summary and labels, issues already filed
+- `POST /api/jira/preview` - issue description in Jira wiki markup for the chosen steps and log mode
+- `POST /api/jira/issues` - file a bug: issue, attachments, link to the failure
+- `POST /api/jira/issues/{key}/comments` - add a repeated failure as a comment to an existing issue
+- `GET /api/jira/links?report_id=` - issues filed for the tests of a report, with statuses from Jira
+
+Setup and behaviour are described in [Jira integration](#jira-integration).
+
 ## UI
 Pages (`http://localhost:9999` in Docker deployment or `http://localhost:5173` in frontend dev mode):
 - `/dashboard` - quality dashboard
@@ -148,6 +244,19 @@ Backend environment variables:
 - `APP_HISTORY_MAX_FILE_SIZE_MB` - maximum `history.jsonl` size (default: `100`)
 - `APP_MAX_INDEXED_RUNS` - how many latest runs the history index keeps (default: `1000`)
 - `APP_CORS_ORIGINS` - comma-separated allowed origins when UI and backend run on different hosts
+
+Jira integration (Server / Data Center 9.x, issues are filed by a service account):
+- `JIRA_BASE_URL` - Jira URL, e.g. `https://jira.company.com`
+- `JIRA_TOKEN` - Personal Access Token of the service account
+- `JIRA_PROJECT_KEY` - project bugs are filed in
+- `JIRA_ISSUE_TYPE` - issue type (default: `Bug`)
+- `JIRA_DEFAULT_LABELS` - comma-separated labels of every issue (default: `autotest`)
+- `JIRA_VERIFY_SSL` - `false` to skip Jira certificate verification; `JIRA_CA_BUNDLE` - path to a custom CA
+- `JIRA_MAX_ATTACHMENT_MB` - maximum attachment size (default: `10`)
+- `JIRA_STAND_NAMES` - stand names by host: `host=stage,host2=dev`
+- `JIRA_MASK_KEYS` - extra comma-separated keys whose values are masked
+- `JIRA_TIMEOUT_SECONDS` - Jira request timeout (default: `20`)
+- `APP_PUBLIC_URL` - TestReport Storage URL for links from the issue to the report and the Allure test
 
 Retention behavior:
 - After uploading a new report, if the total count exceeds `APP_MAX_REPORTS`,

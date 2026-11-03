@@ -79,3 +79,66 @@ def get_settings() -> Settings:
         settings.cors_origins or "same-origin",
     )
     return settings
+
+
+@dataclass(frozen=True)
+class JiraSettings:
+    base_url: str | None
+    token: str | None
+    project_key: str | None
+    issue_type: str
+    default_labels: tuple[str, ...]
+    verify: bool | str
+    timeout_seconds: float
+    max_attachment_bytes: int
+    public_url: str | None
+    stand_names: dict[str, str] = field(default_factory=dict)
+    mask_keys: tuple[str, ...] = ()
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.base_url and self.token and self.project_key)
+
+
+def _split_list(raw: str | None) -> tuple[str, ...]:
+    return tuple(item.strip() for item in (raw or "").split(",") if item.strip())
+
+
+def _parse_mapping(raw: str | None) -> dict[str, str]:
+    """`host=name,host2=name2` → {"host": "name", ...}."""
+    mapping = {}
+    for item in _split_list(raw):
+        key, sep, value = item.partition("=")
+        if sep and key.strip() and value.strip():
+            mapping[key.strip().lower()] = value.strip()
+    return mapping
+
+
+def get_jira_settings() -> JiraSettings:
+    verify: bool | str = os.getenv("JIRA_CA_BUNDLE", "").strip() or True
+    if os.getenv("JIRA_VERIFY_SSL", "").strip().lower() in {"0", "false", "no"}:
+        verify = False
+    base_url = os.getenv("JIRA_BASE_URL", "").strip().rstrip("/") or None
+    public_url = os.getenv("APP_PUBLIC_URL", "").strip().rstrip("/") or None
+    settings = JiraSettings(
+        base_url=base_url,
+        token=os.getenv("JIRA_TOKEN", "").strip() or None,
+        project_key=os.getenv("JIRA_PROJECT_KEY", "").strip() or None,
+        issue_type=os.getenv("JIRA_ISSUE_TYPE", "").strip() or "Bug",
+        default_labels=_split_list(os.getenv("JIRA_DEFAULT_LABELS", "autotest")),
+        verify=verify,
+        timeout_seconds=float(_parse_positive_int("JIRA_TIMEOUT_SECONDS", 20)),
+        max_attachment_bytes=_parse_positive_int("JIRA_MAX_ATTACHMENT_MB", 10) * 1024 * 1024,
+        public_url=public_url,
+        stand_names=_parse_mapping(os.getenv("JIRA_STAND_NAMES")),
+        mask_keys=_split_list(os.getenv("JIRA_MASK_KEYS")),
+    )
+    logger.info(
+        "Resolved Jira settings: enabled=%s base_url=%s project=%s issue_type=%s verify=%s",
+        settings.enabled,
+        settings.base_url,
+        settings.project_key,
+        settings.issue_type,
+        settings.verify,
+    )
+    return settings

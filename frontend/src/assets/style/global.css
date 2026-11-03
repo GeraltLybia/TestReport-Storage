@@ -43,6 +43,12 @@
   --flaky: #ffd60a;
   --flaky-soft: rgba(255, 214, 10, 0.14);
 
+  --jira: #8db4ff;
+  --jira-soft: rgba(76, 138, 240, 0.16);
+  --code-bg: #05080b;
+  --code-text: #c9d6e2;
+  --row-selected: #0e1c21;
+
   --bar-passed: #3cc27a;
   --bar-failed: #ef5350;
   --bar-broken: #f5a93a;
@@ -97,6 +103,12 @@
   --warning-soft: #fcefd6;
   --flaky: #9a6700;
   --flaky-soft: rgba(255, 214, 10, 0.2);
+
+  --jira: #1d4fa8;
+  --jira-soft: #e3ecfc;
+  --code-bg: #0e1822;
+  --code-text: #d6e2ec;
+  --row-selected: #f2fafa;
 
   --bar-passed: #34b16a;
   --bar-failed: #c9302c;

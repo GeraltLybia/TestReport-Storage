@@ -122,6 +122,10 @@ def create_app() -> FastAPI:
             "description": "Работа с `history.jsonl`: загрузка, скачивание и просмотр метаданных.",
         },
         {
+            "name": "jira",
+            "description": "Баги в Jira по упавшим тестам отчёта: черновик, создание, связи с задачами.",
+        },
+        {
             "name": "system",
             "description": "Служебные endpoint'ы для проверки состояния сервиса.",
         },
