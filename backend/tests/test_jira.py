@@ -304,7 +304,7 @@ class FakeJira:
                         {"fieldId": "labels", "required": False},
                         {"fieldId": "assignee", "required": False},
                         {"fieldId": "environment", "required": False},
-                        {"fieldId": "customfield_1", "name": "Team", "required": True},
+                        {"fieldId": "customfield_1", "name": "Team", "required": True, "schema": {"type": "string"}, "defaultValue": "QA"},
                     ]
                 },
             )
@@ -335,7 +335,8 @@ def test_create_issue_files_bug_attaches_masked_log_and_links_failure(storage):
     meta = service.meta()
     assert meta["issueType"] == {"id": "1", "name": "Bug"}
     assert meta["defaultPriority"] == "3"
-    assert meta["unsupportedRequired"] == [{"id": "customfield_1", "name": "Team"}]
+    assert meta["unsupportedRequired"] == []
+    assert next(f for f in meta["fieldDefinitions"] if f["id"] == "customfield_1")["control"] == "text"
 
     result = service.create_issue(
         BugIssueRequest(
@@ -438,3 +439,107 @@ def test_routes(storage):
         assert client.get("/api/jira/draft", params={"report_id": REPORT_ID, "test_id": "../x"}).status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_dynamic_required_fields_are_checked_and_sent(storage):
+    fake = FakeJira()
+    def handler(request):
+        response = fake(request)
+        if request.url.path.endswith('/issuetypes/1'):
+            payload = response.json()
+            payload['values'].extend([
+                {'fieldId': 'customfield_2', 'name': 'Business unit', 'required': True,
+                 'schema': {'type': 'option'}, 'allowedValues': [{'id': 'a', 'value': 'Retail'}, {'id': 'b', 'value': 'B2B'}]},
+                {'fieldId': 'fixVersions', 'name': 'Fix versions', 'required': False,
+                 'schema': {'type': 'array', 'items': 'version'}, 'allowedValues': [{'id': 'v1', 'name': '1.0'}]},
+                {'fieldId': 'customfield_3', 'name': 'Count', 'required': True, 'schema': {'type': 'number'}},
+            ])
+            return httpx.Response(200, json=payload)
+        return response
+    service = JiraService(_context(storage), _settings(), JiraClient(_settings(), transport=httpx.MockTransport(handler)))
+    request = BugIssueRequest(reportId=REPORT_ID, testId='t1', summary='Bug', expected='Success')
+    with pytest.raises(HTTPException, match='Business unit'):
+        service.create_issue(request)
+    assert fake.created is None
+    request.extraFields = {'customfield_2': {'id': 'a'}, 'customfield_3': 0, 'fixVersions': [{'id': 'v1'}]}
+    service.create_issue(request)
+    assert fake.created['customfield_2'] == {'id': 'a'}
+    assert fake.created['customfield_3'] == 0
+    assert fake.created['customfield_1'] == 'QA'
+    assert fake.created['fixVersions'] == [{'id': 'v1'}]
+    request.extraFields['customfield_2'] = {'id': 'unknown'}
+    with pytest.raises(HTTPException, match='Некорректное значение'):
+        service.create_issue(request)
+    request.extraFields = {'project': {'key': 'OTHER'}}
+    with pytest.raises(HTTPException, match='нельзя задать'):
+        service.create_issue(request)
+
+
+def test_createmeta_reads_all_pages():
+    offsets = []
+    def handler(request):
+        offset = int(request.url.params['startAt'])
+        offsets.append(offset)
+        return httpx.Response(200, json={'start': offset, 'size': 1, 'total': 3, 'last': offset == 2,
+                                        'values': [{'fieldId': f'customfield_{offset}'}]})
+    client = JiraClient(_settings(), transport=httpx.MockTransport(handler))
+    assert len(client.issue_fields('SHOP', '1')) == 3
+    assert offsets == [0, 1, 2]
+
+
+@pytest.mark.parametrize('schema,value,valid', [
+    ({'type': 'boolean'}, False, True),
+    ({'type': 'number'}, 0, True),
+    ({'type': 'number'}, '5', False),
+    ({'type': 'number'}, float('inf'), False),
+    ({'type': 'date'}, '2026-02-30', False),
+    ({'type': 'date'}, '2026-11-03', True),
+    ({'type': 'datetime'}, '2026-11-03T11:00:00+02:00', True),
+    ({'type': 'datetime'}, '2026-11-03T11:00:00', False),
+    ({'type': 'user'}, {'name': 'qa-alice'}, True),
+    ({'type': 'array', 'items': 'user'}, [{'name': 'qa-alice'}], True),
+])
+def test_dynamic_field_validation(schema, value, valid):
+    from app.services.jira.fields import field_metadata, apply_fields
+    definition = field_metadata({'fieldId': 'customfield_test', 'name': 'Test', 'required': True, 'schema': schema})
+    fields = {}
+    if valid:
+        apply_fields(fields, {'customfield_test': value}, [definition])
+        if schema['type'] == 'datetime':
+            assert fields['customfield_test'] == '2026-11-03T11:00:00.000+0200'
+        else:
+            assert fields['customfield_test'] == value
+    else:
+        with pytest.raises(HTTPException):
+            apply_fields(fields, {'customfield_test': value}, [definition])
+
+
+def test_creation_refreshes_metadata_before_posting(storage):
+    fake = FakeJira()
+    changed = False
+    def handler(request):
+        response = fake(request)
+        if changed and request.url.path.endswith('/issuetypes/1'):
+            payload = response.json()
+            payload['values'].append({'fieldId': 'customfield_new', 'name': 'New required field',
+                                      'required': True, 'schema': {'type': 'string'}})
+            return httpx.Response(200, json=payload)
+        return response
+    service = JiraService(_context(storage), _settings(), JiraClient(_settings(), transport=httpx.MockTransport(handler)))
+    assert 'customfield_new' not in service.meta()['fields']
+    changed = True
+    with pytest.raises(HTTPException, match='New required field'):
+        service.create_issue(BugIssueRequest(reportId=REPORT_ID, testId='t1', summary='s', expected='x'))
+    assert fake.created is None
+
+
+def test_cascade_validates_the_child_against_its_parent():
+    from app.services.jira.fields import field_metadata, apply_fields
+    field = field_metadata({'fieldId': 'customfield_region', 'name': 'Region', 'required': True,
+                            'schema': {'type': 'option', 'custom': 'jira:cascadingselect'},
+                            'allowedValues': [{'id': 'p1', 'value': 'Parent', 'children': [{'id': 'c1'}]}]})
+    output = {}
+    apply_fields(output, {'customfield_region': {'id': 'p1', 'child': {'id': 'c1'}}}, [field])
+    assert output['customfield_region']['child'] == {'id': 'c1'}
+    with pytest.raises(HTTPException):
+        apply_fields({}, {'customfield_region': {'id': 'p1', 'child': {'id': 'wrong'}}}, [field])

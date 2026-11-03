@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .fields import field_metadata, apply_fields, BUILTIN
+
 import logging
 import re
 import threading
@@ -38,20 +40,7 @@ logger = logging.getLogger(__name__)
 SUMMARY_LIMIT = 110
 META_TTL_SECONDS = 600
 STATUS_TTL_SECONDS = 60
-# fields the bug form fills itself; any other required field cannot be created from here
-HANDLED_FIELDS = {
-    "project",
-    "issuetype",
-    "summary",
-    "description",
-    "reporter",
-    "priority",
-    "components",
-    "labels",
-    "assignee",
-    "environment",
-    "attachment",
-}
+
 
 
 @dataclass
@@ -147,9 +136,9 @@ class JiraService:
             "issueType": self.settings.issue_type,
         }
 
-    def meta(self) -> dict:
+    def meta(self, refresh: bool = False) -> dict:
         cached = self._meta
-        if cached and time.monotonic() - cached[0] < META_TTL_SECONDS:
+        if not refresh and cached and time.monotonic() - cached[0] < META_TTL_SECONDS:
             return cached[1]
         project = self.settings.project_key
         try:
@@ -165,7 +154,8 @@ class JiraService:
         except JiraError as exc:
             raise self._http_error(exc) from None
 
-        by_id = {str(item.get("fieldId")): item for item in fields}
+        by_id = {str(item.get("fieldId") or item.get("key")): item for item in fields}
+        definitions = [field_metadata(item) for item in by_id.values()]
 
         def allowed(field_id: str) -> list[dict]:
             values = (by_id.get(field_id) or {}).get("allowedValues") or []
@@ -179,10 +169,11 @@ class JiraService:
             "defaultPriority": str(default_priority["id"]) if "id" in default_priority else None,
             "components": allowed("components"),
             "fields": sorted(by_id),
+            "fieldDefinitions": definitions,
             "unsupportedRequired": [
                 {"id": field_id, "name": item.get("name")}
-                for field_id, item in by_id.items()
-                if item.get("required") and field_id not in HANDLED_FIELDS and not item.get("hasDefaultValue")
+                for field_id, item in ((f["id"], f) for f in definitions)
+                if item["required"] and field_id not in BUILTIN and item["control"] == "unsupported" and not item["hasDefaultValue"]
             ],
         }
         self._meta = (time.monotonic(), meta)
@@ -449,7 +440,7 @@ class JiraService:
         if not request.expected.strip():
             raise HTTPException(status_code=400, detail="Заполните ожидаемый результат")
         client = self.client
-        meta = self.meta()
+        meta = self.meta(refresh=True)
         prepared = self._prepare(request.reportId, request.testId)
         attachments = self._chosen_attachments(prepared, request)
         description = self._description(prepared, request, request.expected, attachments)
@@ -471,6 +462,7 @@ class JiraService:
             fields["assignee"] = {"name": request.assignee}
         if "environment" in available:
             fields["environment"] = description["environment"]
+        apply_fields(fields, request.extraFields, meta["fieldDefinitions"])
         try:
             created = client.create_issue(fields)
         except JiraError as exc:

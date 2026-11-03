@@ -69,15 +69,26 @@ class JiraClient:
         return response.json() if response.content else None
 
     # ─── create metadata (Jira 9 removed `createmeta?expand=…`) ───
+    def _metadata_pages(self, path: str) -> list[dict]:
+        items: list[dict] = []
+        start = 0
+        while True:
+            payload = self._json("GET", path, params={"startAt": start, "maxResults": 100}) or {}
+            values = payload.get("values") or []
+            items.extend(item for item in values if isinstance(item, dict))
+            start += len(values)
+            if not values or payload.get("last") is True or payload.get("isLast") is True:
+                break
+            total = payload.get("total")
+            if (total is not None and start >= total) or (total is None and "last" not in payload and "isLast" not in payload):
+                break
+        return items
+
     def issue_types(self, project: str) -> list[dict]:
-        payload = self._json("GET", f"/issue/createmeta/{project}/issuetypes", params={"maxResults": 100})
-        return [item for item in (payload or {}).get("values", []) if isinstance(item, dict)]
+        return self._metadata_pages(f"/issue/createmeta/{project}/issuetypes")
 
     def issue_fields(self, project: str, issue_type_id: str) -> list[dict]:
-        payload = self._json(
-            "GET", f"/issue/createmeta/{project}/issuetypes/{issue_type_id}", params={"maxResults": 200}
-        )
-        return [item for item in (payload or {}).get("values", []) if isinstance(item, dict)]
+        return self._metadata_pages(f"/issue/createmeta/{project}/issuetypes/{issue_type_id}")
 
     def find_user(self, username: str) -> dict | None:
         try:

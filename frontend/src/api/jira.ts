@@ -26,7 +26,7 @@ export function fetchJiraConfig() {
 }
 
 export function fetchJiraMeta() {
-  return request<JiraMeta>('/api/jira/meta', 'Не удалось получить поля задачи из Jira')
+  return request<JiraMeta>('/api/jira/meta?refresh=true', 'Не удалось получить поля задачи из Jira')
 }
 
 export function fetchBugDraft(reportId: string, testId: string, signal?: AbortSignal) {

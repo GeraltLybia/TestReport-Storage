@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import JiraDynamicField from './JiraDynamicField.vue'
+import { dynamicFields, initialFieldValue, isEmptyField } from '../../../utils/jiraFields'
+
 import { commentBug, createBug, fetchBugDraft, fetchJiraMeta, previewBug } from '../../../api/jira'
 import { fetchReportResults } from '../../../api/reports'
 import {
@@ -119,6 +122,7 @@ function resetForm(value: BugDraft) {
   expected.value = ''
   includeTrace.value = true
   components.value = []
+  resetExtraFields()
   labels.value = [...value.suggested.labels]
   labelInput.value = ''
   assignee.value = value.suggested.assignee && value.suggested.assignee.found !== false ? value.suggested.assignee.name : ''
@@ -126,6 +130,7 @@ function resetForm(value: BugDraft) {
   duplicateDismissed.value = false
   expectedError.value = null
   submitError.value = null
+  applySystemDefaults()
 }
 
 async function loadDraft(id: string) {
@@ -155,11 +160,35 @@ watch(testId, (id) => {
 // ─── Jira fields ───
 const meta = ref<JiraMeta | null>(null)
 const metaError = ref<string | null>(null)
+const extraValues = ref<Record<string, unknown>>({})
+const invalidFields = ref(new Set<string>())
+const additionalFields = computed(() => dynamicFields(meta.value?.fieldDefinitions ?? []))
+function hasField(id: string) { return !meta.value || meta.value.fields.includes(id) }
+function requiredField(id: string) { return meta.value?.fieldDefinitions.find(f => f.id === id)?.required ?? false }
+function applySystemDefaults() {
+  const definitions = meta.value?.fieldDefinitions ?? []
+  const defaults = (id: string) => definitions.find(f => f.id === id)?.defaultValue
+  const componentDefaults = defaults('components')
+  if (!components.value.length && Array.isArray(componentDefaults)) {
+    components.value = componentDefaults.map(v => String(v.id))
+  }
+  const labelDefaults = defaults('labels')
+  if (Array.isArray(labelDefaults)) labels.value = [...new Set([...labels.value, ...labelDefaults.map(String)])]
+  const userDefault = defaults('assignee') as { name?: string } | undefined
+  if (!assignee.value && userDefault?.name) assignee.value = userDefault.name
+}
+function resetExtraFields() {
+  extraValues.value = Object.fromEntries(additionalFields.value.map(f => [f.id, initialFieldValue(f)]))
+  invalidFields.value = new Set()
+}
 
 async function loadMeta() {
   try {
     meta.value = await fetchJiraMeta()
     priority.value ??= meta.value.defaultPriority
+    resetExtraFields()
+    applySystemDefaults()
+    metaError.value = null
   } catch (exception) {
     metaError.value = exception instanceof Error ? exception.message : 'Jira недоступна'
   }
@@ -401,7 +430,7 @@ const footerHint = computed(() => {
   }
   const unsupported = meta.value?.unsupportedRequired ?? []
   if (unsupported.length) {
-    return `В проекте есть обязательные поля, которых нет в форме: ${unsupported.map((item) => item.name ?? item.id).join(', ')}. Jira может отклонить задачу.`
+    return `Эти обязательные поля Jira пока не поддерживаются: ${unsupported.map((item) => item.name ?? item.id).join(', ')}.`
   }
   return 'Автор задачи — сервисный аккаунт Jira.'
 })
@@ -425,6 +454,30 @@ async function submit() {
     tab.value = 'preview'
     return
   }
+  if (mode.value.type === 'create') {
+    if (props.config?.enabled && !meta.value) {
+      submitError.value = 'Дождитесь загрузки полей Jira или повторите загрузку'
+      return
+    }
+    const builtin: Record<string, unknown> = {
+      summary: summary.value, priority: priority.value, components: components.value,
+      labels: labels.value, assignee: assignee.value, environment: draft.value?.stand?.url,
+    }
+    const missing = (meta.value?.fieldDefinitions ?? []).filter(field => {
+      if (['project', 'issuetype', 'reporter', 'attachment', 'description'].includes(field.id)) return false
+      const value = field.id in builtin ? builtin[field.id] : extraValues.value[field.id]
+      return field.required && !field.hasDefaultValue && isEmptyField(value)
+    })
+    invalidFields.value = new Set(missing.map(f => f.id))
+    if (missing.length) {
+      submitError.value = `Заполните обязательные поля: ${missing.map(f => f.name).join(', ')}`
+      return
+    }
+    if (meta.value?.unsupportedRequired.length) {
+      submitError.value = footerHint.value
+      return
+    }
+  }
   submitting.value = true
   try {
     if (mode.value.type === 'comment') {
@@ -433,6 +486,7 @@ async function submit() {
     } else {
       const result = await createBug({
         ...content.value,
+        extraFields: extraValues.value,
         summary: summary.value,
         priority: priority.value,
         components: components.value,
@@ -653,24 +707,24 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <label class="bug-field bug-field--wide">
-                  <span class="bug-label">Заголовок</span>
+                  <span class="bug-label">Заголовок *</span>
                   <input v-model="summary" class="bug-input" maxlength="255" :disabled="mode.type === 'comment'" />
                 </label>
-                <label class="bug-field">
-                  <span class="bug-label">Приоритет</span>
+                <label v-if="hasField('priority')" class="bug-field">
+                  <span class="bug-label">Приоритет{{ requiredField('priority') ? ' *' : '' }}</span>
                   <select v-model="priority" class="bug-input" :disabled="!meta?.priorities.length || mode.type === 'comment'">
                     <option v-if="!meta?.priorities.length" :value="null">Нет данных из Jira</option>
                     <option v-for="item in meta?.priorities ?? []" :key="item.id" :value="item.id">{{ item.name }}</option>
                   </select>
                 </label>
-                <label class="bug-field">
-                  <span class="bug-label">Исполнитель</span>
+                <label v-if="hasField('assignee')" class="bug-field">
+                  <span class="bug-label">Исполнитель{{ requiredField('assignee') ? ' *' : '' }}</span>
                   <input v-model="assignee" class="bug-input" placeholder="Не назначен" :disabled="mode.type === 'comment'" />
                   <span v-if="assigneeMissing" class="bug-field-note tone-broken">{{ assigneeMissing }}</span>
                   <span v-else-if="assigneeHint" class="bug-field-note">{{ assigneeHint }}</span>
                 </label>
-                <div class="bug-field">
-                  <span class="bug-label">Компоненты</span>
+                <div v-if="hasField('components')" class="bug-field">
+                  <span class="bug-label">Компоненты{{ requiredField('components') ? ' *' : '' }}</span>
                   <div class="bug-input bug-input--chips">
                     <span v-for="id in components" :key="id" class="bug-chip">
                       {{ componentName(id) }}
@@ -688,8 +742,8 @@ onBeforeUnmount(() => {
                     <span v-else-if="!components.length" class="bug-muted">{{ meta ? 'Нет компонентов' : 'Нет данных из Jira' }}</span>
                   </div>
                 </div>
-                <div class="bug-field">
-                  <span class="bug-label">Метки</span>
+                <div v-if="hasField('labels')" class="bug-field">
+                  <span class="bug-label">Метки{{ requiredField('labels') ? ' *' : '' }}</span>
                   <div class="bug-input bug-input--chips">
                     <span v-for="label in labels" :key="label" class="bug-chip">
                       {{ label }}
@@ -706,7 +760,15 @@ onBeforeUnmount(() => {
                     />
                   </div>
                 </div>
+                <JiraDynamicField
+                  v-for="field in additionalFields" :key="field.id" v-model="extraValues[field.id]"
+                  :field="field" :disabled="mode.type === 'comment' || submitting"
+                  :invalid="invalidFields.has(field.id) && isEmptyField(extraValues[field.id])"
+                />
               </div>
+              <p v-if="metaError" class="bug-field-note tone-failed">
+                {{ metaError }} <button type="button" class="bug-tool" @click="loadMeta">Повторить загрузку полей</button>
+              </p>
             </section>
 
             <template v-if="draft">

@@ -132,6 +132,7 @@ TestReport Storage users need no Jira access, and the token never reaches the br
 - **Attachments**: test logs and screenshots are attached by default, the failing request dump on demand; size limit is `JIRA_MAX_ATTACHMENT_MB`
 - **Stand** — the most called host of the test without the port: services of one stand differ by port only (`host:4001`, `host:18081` → `http://host`). Stand names can be set in `JIRA_STAND_NAMES`
 - **Test author** — `User` from the report's `widgets/variables.json`; suggested as the assignee when Jira has such a user
+- **Dynamic form**: additional project fields appear automatically; required fields are marked `*` and checked before submission. Options and defaults come from Jira. Priority, assignee, components and labels are hidden when absent from the create screen
 - **Issue fields**: summary (`[Автотест] Test: Error type — message`, editable), priority and components from the project, labels (`JIRA_DEFAULT_LABELS` + test tags), Environment (stand and run). The expected result is required — a person writes it
 - **Preview** of the description and a "Jira markup" tab with the exact text that is sent
 - **Masking**: auth headers, Bearer tokens, JWTs and values of `password`, `token`, `secret`, `api_key` and similar keys are removed from logs and dumps before upload (extra keys: `JIRA_MASK_KEYS`)
@@ -159,7 +160,7 @@ The integration reads Allure 3 reports and needs no test changes if the tests al
    - *Assign Issues* — to set the assignee; assignees need *Assignable User*
    - global *Browse users and groups* — to check that the test author exists in Jira (without it the assignee is filled in unchecked)
 2. **Personal Access Token.** Log in as the service account → profile → *Personal Access Tokens* → *Create token*. Pick a generous expiry and note the date: once it expires Jira answers 401
-3. **Issue type.** Make sure the project has the `Bug` type (or set yours in `JIRA_ISSUE_TYPE`) and that its create screen has no required fields besides summary, priority, components, labels, assignee and Environment — the form cannot fill others
+3. **Issue type and create screen.** Make sure the project has the `Bug` type (or set yours in `JIRA_ISSUE_TYPE`). The form reads `GET /rest/api/2/issue/createmeta/{project}/issuetypes/{issueTypeId}` and automatically adds fields using their names, schemas, required flags, allowed values and defaults. Supported editors include text, multiline text, numbers, dates, date/time, booleans, users, single/multiple selects and cascading selects. Required plugin fields with unknown schemas and no default are listed in `unsupportedRequired`; issue creation is blocked with an explanation
 4. **Environment variables.** For `docker compose`, put them into `.env` next to `docker-compose.yml` (the file is git-ignored):
    ```bash
    JIRA_BASE_URL=https://jira.company.com
@@ -185,7 +186,7 @@ The integration reads Allure 3 reports and needs no test changes if the tests al
    curl http://localhost:8080/api/jira/config   # "enabled": true
    curl http://localhost:8080/api/jira/meta     # issue type, priorities, components
    ```
-   `meta.unsupportedRequired` lists required project fields the form lacks — if it is not empty, Jira will reject issues (see step 3)
+   `meta.fieldDefinitions` describes dynamic fields; `meta.unsupportedRequired` lists required fields with unsupported schemas. These need an editor or a default configured in Jira (step 3). `GET /api/jira/meta?refresh=true` bypasses the cache; the dialog requests fresh fields when opened, and the backend rechecks metadata before creating an issue
 7. **First bug.** Open a report with failures → "Results" → the bug icon on a test → fill in the expected result → create. The issue chip then shows on the test row
 
 Without Jira configured the buttons stay: the draft and the preview work, and filing tells which variables are missing.
@@ -203,7 +204,7 @@ Without Jira configured the buttons stay: the draft and the preview work, and fi
 
 ## Jira API
 - `GET /api/jira/config` - whether the integration is on, Jira URL, project
-- `GET /api/jira/meta` - issue type, priorities and components of the project (from createmeta, cached for 10 minutes)
+- `GET /api/jira/meta` - create-screen fields: `fieldDefinitions` with schemas, required flags, options and defaults; `refresh=true` bypasses the 10-minute cache
 - `GET /api/jira/draft?report_id=&test_id=` - bug draft for a test: steps by section, stand, author, attachments, suggested summary and labels, issues already filed
 - `POST /api/jira/preview` - issue description in Jira wiki markup for the chosen steps and log mode
 - `POST /api/jira/issues` - file a bug: issue, attachments, link to the failure

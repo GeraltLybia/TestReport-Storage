@@ -7,6 +7,17 @@ export type JiraConfig = {
 
 export type JiraOption = { id: string; name: string | null; iconUrl?: string | null }
 
+export type JiraField = {
+  id: string
+  name: string
+  required: boolean
+  control: 'text' | 'textarea' | 'number' | 'date' | 'datetime-local' | 'boolean' | 'user' | 'users' | 'strings' | 'select' | 'multiselect' | 'cascade' | 'unsupported'
+  schema: { type?: string; items?: string; custom?: string }
+  allowedValues: unknown[]
+  hasDefaultValue: boolean
+  defaultValue: unknown
+}
+
 export type JiraMeta = {
   projectKey: string
   issueType: { id: string; name: string | null }
@@ -14,6 +25,7 @@ export type JiraMeta = {
   defaultPriority: string | null
   components: JiraOption[]
   fields: string[]
+  fieldDefinitions: JiraField[]
   /** Required fields of the project the bug form does not fill. */
   unsupportedRequired: { id: string; name: string | null }[]
 }
@@ -106,6 +118,7 @@ export type BugContent = {
 }
 
 export type BugIssueRequest = BugContent & {
+  extraFields?: Record<string, unknown>
   summary: string
   priority: string | null
   components: string[]

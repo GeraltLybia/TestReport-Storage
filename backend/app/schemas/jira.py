@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ class BugContent(BaseModel):
 
 
 class BugIssueRequest(BugContent):
+    extraFields: dict[str, Any] = Field(default_factory=dict, description="Дополнительные поля из fieldDefinitions в /api/jira/meta")
     summary: str = Field(..., min_length=1, max_length=255)
     priority: str | None = Field(None, description="ID приоритета из /api/jira/meta")
     components: list[str] = Field(default_factory=list, description="ID компонентов")

@@ -15,10 +15,10 @@ def get_config(service: JiraService = Depends(get_jira_service)):
 @router.get(
     "/meta",
     summary="Поля задачи",
-    description="Тип задачи, приоритеты и компоненты проекта из createmeta Jira. Кэшируется на 10 минут.",
+    description="Поля экрана создания из createmeta Jira: схемы, обязательность, варианты и значения по умолчанию. refresh=true обновляет кэш.",
 )
-def get_meta(service: JiraService = Depends(get_jira_service)):
-    return service.meta()
+def get_meta(refresh: bool = False, service: JiraService = Depends(get_jira_service)):
+    return service.meta(refresh=refresh)
 
 
 @router.get(
