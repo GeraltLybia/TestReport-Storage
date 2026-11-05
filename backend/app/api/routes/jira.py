@@ -17,8 +17,8 @@ def get_config(service: JiraService = Depends(get_jira_service)):
     summary="Поля задачи",
     description="Поля экрана создания из createmeta Jira: схемы, обязательность, варианты и значения по умолчанию. refresh=true обновляет кэш.",
 )
-def get_meta(refresh: bool = False, service: JiraService = Depends(get_jira_service)):
-    return service.meta(refresh=refresh)
+def get_meta(refresh: bool = False, project_key: str | None = None, service: JiraService = Depends(get_jira_service)):
+    return service.meta(refresh=refresh, project_key=project_key)
 
 
 @router.get(

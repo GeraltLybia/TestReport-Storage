@@ -27,6 +27,22 @@
   animation: bug-in var(--dur-base) var(--ease-apple) both;
 }
 
+.bug-dialog--review {
+  max-width: 65rem;
+}
+
+.bug-review-content {
+  flex: none;
+  gap: 1rem;
+}
+
+textarea.bug-review-editor {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 20rem;
+  max-height: 65vh;
+}
+
 .bug-header {
   display: flex;
   align-items: center;

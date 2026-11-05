@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import JiraDynamicField from './JiraDynamicField.vue'
-import { dynamicFields, initialFieldValue, isEmptyField } from '../../../utils/jiraFields'
+import { dynamicFields, initialFieldValue, isEmptyField, mergeProjectFields } from '../../../utils/jiraFields'
 
 import { commentBug, createBug, fetchBugDraft, fetchJiraMeta, previewBug } from '../../../api/jira'
 import { fetchReportResults } from '../../../api/reports'
@@ -24,6 +24,7 @@ import type {
   BugContent,
   BugDraft,
   BugIssueResult,
+  BugIssueRequest,
   BugLogMode,
   BugStepGroup,
   JiraConfig,
@@ -112,6 +113,30 @@ const tab = ref<'preview' | 'wiki'>('preview')
 const expectedError = ref<string | null>(null)
 const submitError = ref<string | null>(null)
 const submitting = ref(false)
+const review = ref<BugIssueRequest | null>(null)
+const reviewDescription = ref<HTMLTextAreaElement | null>(null)
+
+async function sendReviewedBug() {
+  if (!review.value || submitting.value || !review.value.summary.trim() || !review.value.description?.trim()) return
+  submitting.value = true
+  submitError.value = null
+  try {
+    const payload = review.value
+    const result = await createBug(payload)
+    emit('filed', { type: 'issue', testId: payload.testId, logMode: payload.logMode, result })
+  } catch (exception) {
+    submitError.value = exception instanceof Error ? exception.message : 'Jira не ответила'
+  } finally {
+    submitting.value = false
+  }
+}
+
+function backToForm() {
+  if (submitting.value) return
+  review.value = null
+  submitError.value = null
+  void nextTick(() => closeButton.value?.focus())
+}
 
 function resetForm(value: BugDraft) {
   selected.value = new Set(value.defaultSteps)
@@ -160,6 +185,13 @@ watch(testId, (id) => {
 // ─── Jira fields ───
 const meta = ref<JiraMeta | null>(null)
 const metaError = ref<string | null>(null)
+const metaLoading = ref(false)
+const projects = computed(() => props.config?.projectKeys ?? (props.config?.projectKey ? [props.config.projectKey] : []))
+const selectedProject = ref(props.config?.projectKey ?? '')
+watch(projects, values => {
+  if (!values.includes(selectedProject.value)) selectedProject.value = values[0] ?? ''
+}, { immediate: true })
+let metaController: AbortController | null = null
 const extraValues = ref<Record<string, unknown>>({})
 const invalidFields = ref(new Set<string>())
 const additionalFields = computed(() => dynamicFields(meta.value?.fieldDefinitions ?? []))
@@ -183,26 +215,51 @@ function resetExtraFields() {
 }
 
 async function loadMeta() {
+  metaController?.abort()
+  metaController = new AbortController()
+  const { signal } = metaController
+  const project = selectedProject.value
+  metaLoading.value = true
+  metaError.value = null
   try {
-    meta.value = await fetchJiraMeta()
-    priority.value ??= meta.value.defaultPriority
-    resetExtraFields()
-    applySystemDefaults()
+    const value = await fetchJiraMeta(project || undefined, signal)
+    if (signal.aborted) return
+    const previous = meta.value
+    extraValues.value = mergeProjectFields(previous?.fieldDefinitions ?? [], value.fieldDefinitions, extraValues.value)
+    if (!previous || !value.priorities.some(item => item.id === priority.value)) priority.value = value.defaultPriority
+    components.value = components.value.filter(id => value.components.some(item => item.id === id))
+    meta.value = value
+    if (!previous) applySystemDefaults()
+    else {
+      // Defaults belong to the target project; shared user values take precedence.
+      for (const id of ['components', 'labels', 'assignee']) {
+        if (!previous.fields.includes(id) && value.fields.includes(id)) {
+          const field = value.fieldDefinitions.find(field => field.id === id)
+          if (id === 'components' && Array.isArray(field?.defaultValue)) components.value = field.defaultValue.map(item => String(item.id))
+          if (id === 'labels' && Array.isArray(field?.defaultValue)) labels.value = [...new Set([...labels.value, ...field.defaultValue.map(String)])]
+          if (id === 'assignee' && !assignee.value) assignee.value = (field?.defaultValue as { name?: string } | null)?.name ?? ''
+        }
+      }
+    }
+    invalidFields.value = new Set()
     metaError.value = null
   } catch (exception) {
+    if (signal.aborted) return
     metaError.value = exception instanceof Error ? exception.message : 'Jira недоступна'
+  } finally {
+    if (!signal.aborted) metaLoading.value = false
   }
 }
 
 watch(
-  () => props.config?.enabled,
-  (enabled) => {
-    if (enabled && !meta.value) void loadMeta()
+  [() => props.config?.enabled, selectedProject],
+  ([enabled]) => {
+    if (enabled) void loadMeta()
   },
   { immediate: true },
 )
 
-const projectKey = computed(() => meta.value?.projectKey ?? props.config?.projectKey ?? '—')
+const projectKey = computed(() => selectedProject.value || meta.value?.projectKey || '—')
 const jiraHost = computed(() => {
   try {
     return props.config?.baseUrl ? new URL(props.config.baseUrl).host : null
@@ -455,7 +512,7 @@ async function submit() {
     return
   }
   if (mode.value.type === 'create') {
-    if (props.config?.enabled && !meta.value) {
+    if (props.config?.enabled && (!meta.value || metaLoading.value || metaError.value || meta.value.projectKey !== selectedProject.value)) {
       submitError.value = 'Дождитесь загрузки полей Jira или повторите загрузку'
       return
     }
@@ -484,16 +541,20 @@ async function submit() {
       const result = await commentBug(mode.value.key, content.value)
       emit('filed', { type: 'comment', testId: currentTest, result })
     } else {
-      const result = await createBug({
+      const payload: BugIssueRequest = {
         ...content.value,
+        projectKey: projectKey.value,
         extraFields: extraValues.value,
         summary: summary.value,
         priority: priority.value,
         components: components.value,
         labels: labels.value,
         assignee: assignee.value.trim() || null,
-      })
-      emit('filed', { type: 'issue', testId: currentTest, logMode: logMode.value, result })
+      }
+      const preview = await previewBug(payload)
+      review.value = { ...payload, description: preview.description }
+      await nextTick()
+      reviewDescription.value?.focus()
     }
   } catch (exception) {
     submitError.value = exception instanceof Error ? exception.message : 'Jira не ответила'
@@ -504,7 +565,10 @@ async function submit() {
 
 // ─── dialog plumbing ───
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && !submitting.value) emit('close')
+  if (event.key === 'Escape' && !submitting.value) {
+    if (review.value) backToForm()
+    else emit('close')
+  }
 }
 
 let bodyOverflow = ''
@@ -521,6 +585,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
   document.body.style.overflow = bodyOverflow
   draftController?.abort()
+  metaController?.abort()
   wikiController?.abort()
   if (wikiTimer) clearTimeout(wikiTimer)
 })
@@ -528,8 +593,37 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="bug-backdrop" @click.self="!submitting && emit('close')">
-      <section class="bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title">
+    <div class="bug-backdrop" @click.self="!submitting && (review ? backToForm() : emit('close'))">
+      <section v-if="review" class="bug-dialog bug-dialog--review" role="dialog" aria-modal="true" aria-labelledby="bug-review-title">
+        <header class="bug-header">
+          <div class="bug-header-text">
+            <h2 id="bug-review-title">Проверка перед отправкой в Jira</h2>
+            <span class="bug-hint">Проект {{ projectKey }} · {{ context }}</span>
+          </div>
+        </header>
+        <div class="bug-col bug-review-content">
+          <label class="bug-field">
+            <span class="bug-label">Заголовок</span>
+            <input v-model="review.summary" class="bug-input" maxlength="255" :disabled="submitting" />
+          </label>
+          <label class="bug-field">
+            <span class="bug-label">Описание в разметке Jira</span>
+            <textarea ref="reviewDescription" v-model="review.description" class="bug-input bug-textarea bug-review-editor" rows="22" spellcheck="false" :disabled="submitting"></textarea>
+          </label>
+          <p class="bug-hint">Проверьте и отредактируйте итоговый текст. Выбранные вложения будут приложены к задаче.</p>
+          <ul v-if="chosenAttachments.length" class="bug-env">
+            <li v-for="item in chosenAttachments" :key="item.id">{{ item.name }}</li>
+          </ul>
+        </div>
+        <footer class="bug-footer">
+          <p v-if="submitError" class="bug-error bug-footer-error" role="alert">{{ submitError }}</p>
+          <button type="button" class="bug-btn" :disabled="submitting" @click="backToForm">Назад к настройкам</button>
+          <button type="button" class="bug-btn bug-btn--primary" :disabled="submitting || !review.summary.trim() || !review.description?.trim()" :aria-busy="submitting" @click="sendReviewedBug">
+            {{ submitting ? 'Отправляем…' : submitLabel }}
+          </button>
+        </footer>
+      </section>
+      <section v-else class="bug-dialog" role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title">
         <header class="bug-header">
           <span class="bug-header-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
@@ -544,12 +638,12 @@ onBeforeUnmount(() => {
               {{ context }}<template v-if="draft?.stand"> · {{ draft.stand.name || draft.stand.host }}</template>
             </span>
           </div>
-          <button ref="closeButton" type="button" class="icon-button bug-close" aria-label="Закрыть" @click="emit('close')">
+          <button ref="closeButton" type="button" class="icon-button bug-close" aria-label="Закрыть" :disabled="submitting" @click="emit('close')">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </header>
 
-        <div class="bug-body">
+        <div class="bug-body" :inert="submitting">
           <!-- left: what goes into the bug -->
           <div class="bug-col bug-col--content">
             <section class="bug-sec">
@@ -696,10 +790,13 @@ onBeforeUnmount(() => {
                 <span v-if="jiraHost" class="bug-hint">{{ jiraHost }}</span>
               </div>
               <div class="bug-fields">
-                <div class="bug-field">
+                <label class="bug-field">
                   <span class="bug-label">Проект</span>
-                  <div class="bug-input bug-input--static"><b class="bug-mono">{{ projectKey }}</b></div>
-                </div>
+                  <select v-if="projects.length > 1" v-model="selectedProject" class="bug-input" aria-label="Проект Jira" :disabled="mode.type === 'comment'">
+                    <option v-for="project in projects" :key="project" :value="project">{{ project }}</option>
+                  </select>
+                  <div v-else class="bug-input bug-input--static"><b class="bug-mono">{{ projectKey }}</b></div>
+                </label>
                 <div class="bug-field">
                   <span class="bug-label">Тип</span>
                   <div class="bug-input bug-input--static">
@@ -769,6 +866,7 @@ onBeforeUnmount(() => {
               <p v-if="metaError" class="bug-field-note tone-failed">
                 {{ metaError }} <button type="button" class="bug-tool" @click="loadMeta">Повторить загрузку полей</button>
               </p>
+              <p v-if="metaLoading" class="bug-hint" role="status">Загрузка полей проекта {{ projectKey }}…</p>
             </section>
 
             <template v-if="draft">
@@ -902,11 +1000,11 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="bug-btn bug-btn--primary"
-            :disabled="!draft || submitting"
+            :disabled="!draft || submitting || (mode.type === 'create' && (metaLoading || !!metaError))"
             :aria-busy="submitting"
             @click="submit"
           >
-            {{ submitting ? 'Отправляем…' : submitLabel }}
+            {{ submitting ? (mode.type === 'create' ? 'Собираем задачу…' : 'Отправляем…') : (mode.type === 'create' ? 'Проверить перед отправкой' : submitLabel) }}
           </button>
         </footer>
       </section>

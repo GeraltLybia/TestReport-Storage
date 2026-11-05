@@ -96,8 +96,12 @@ class JiraSettings:
     mask_keys: tuple[str, ...] = ()
 
     @property
+    def project_keys(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(_split_list(self.project_key)))
+
+    @property
     def enabled(self) -> bool:
-        return bool(self.base_url and self.token and self.project_key)
+        return bool(self.base_url and self.token and self.project_keys)
 
 
 def _split_list(raw: str | None) -> tuple[str, ...]:

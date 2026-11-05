@@ -43,3 +43,26 @@ export function initialFieldValue(field: JiraField): unknown {
 export function dynamicFields(fields: JiraField[]): JiraField[] {
   return fields.filter(f => !builtinFields.has(f.id) && f.control !== 'unsupported')
 }
+
+/** Keep shared fields, including deliberately cleared values; default only new fields. */
+export function mergeProjectFields(previous: JiraField[], next: JiraField[], values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(dynamicFields(next).map(field => {
+    const shared = previous.some(old => old.id === field.id && old.control === field.control)
+    let value = shared && field.id in values ? values[field.id] : initialFieldValue(field)
+    if (shared && field.allowedValues.length) {
+      if (field.control === 'select' && !field.allowedValues.some(option => sameOption(option, value))) value = null
+      if (field.control === 'multiselect' && Array.isArray(value)) {
+        value = value.filter(item => field.allowedValues.some(option => sameOption(option, item)))
+      }
+      if (field.control === 'cascade' && value && typeof value === 'object') {
+        const option = field.allowedValues.find(option => sameOption(option, value)) as Record<string, unknown> | undefined
+        if (!option) value = null
+        else {
+          const child = (value as Record<string, unknown>).child
+          if (child && !(Array.isArray(option.children) && option.children.some(item => sameOption(item, child)))) value = optionValue(option)
+        }
+      }
+    }
+    return [field.id, value]
+  }))
+}

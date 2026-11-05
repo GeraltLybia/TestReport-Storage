@@ -25,8 +25,10 @@ export function fetchJiraConfig() {
   return request<JiraConfig>('/api/jira/config', 'Не удалось получить настройки Jira')
 }
 
-export function fetchJiraMeta() {
-  return request<JiraMeta>('/api/jira/meta?refresh=true', 'Не удалось получить поля задачи из Jira')
+export function fetchJiraMeta(projectKey?: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ refresh: 'true' })
+  if (projectKey) query.set('project_key', projectKey)
+  return request<JiraMeta>(`/api/jira/meta?${query}`, 'Не удалось получить поля задачи из Jira', { signal })
 }
 
 export function fetchBugDraft(reportId: string, testId: string, signal?: AbortSignal) {

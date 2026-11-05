@@ -248,7 +248,7 @@ Backend environment variables:
 Jira integration (Server / Data Center 9.x, issues are filed by a service account):
 - `JIRA_BASE_URL` - Jira URL, e.g. `https://jira.company.com`
 - `JIRA_TOKEN` - Personal Access Token of the service account
-- `JIRA_PROJECT_KEY` - project bugs are filed in
+- `JIRA_PROJECT_KEY` - one project or comma-separated projects (`CLM,QA,CORE`). The first is the default. A single project has no selector. Switching projects loads its fields and preserves shared values when available in the target project. `JIRA_ISSUE_TYPE` is shared by all projects.
 - `JIRA_ISSUE_TYPE` - issue type (default: `Bug`)
 - `JIRA_DEFAULT_LABELS` - comma-separated labels of every issue (default: `autotest`)
 - `JIRA_VERIFY_SSL` - `false` to skip Jira certificate verification; `JIRA_CA_BUNDLE` - path to a custom CA

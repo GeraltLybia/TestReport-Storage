@@ -2,6 +2,7 @@ export type JiraConfig = {
   enabled: boolean
   baseUrl: string | null
   projectKey: string | null
+  projectKeys?: string[]
   issueType: string
 }
 
@@ -118,6 +119,8 @@ export type BugContent = {
 }
 
 export type BugIssueRequest = BugContent & {
+  projectKey?: string
+  description?: string
   extraFields?: Record<string, unknown>
   summary: string
   priority: string | null

@@ -16,6 +16,8 @@ class BugContent(BaseModel):
 
 
 class BugIssueRequest(BugContent):
+    projectKey: str | None = None
+    description: str | None = Field(None, min_length=1, description="Отредактированное описание в разметке Jira; null — собрать автоматически")
     extraFields: dict[str, Any] = Field(default_factory=dict, description="Дополнительные поля из fieldDefinitions в /api/jira/meta")
     summary: str = Field(..., min_length=1, max_length=255)
     priority: str | None = Field(None, description="ID приоритета из /api/jira/meta")

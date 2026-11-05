@@ -109,7 +109,7 @@ class JiraService:
         self.masker = SecretMasker(settings.mask_keys)
         self._client = client
         self._lock = threading.Lock()
-        self._meta: tuple[float, dict] | None = None
+        self._meta: dict[str, tuple[float, dict]] = {}
         self._statuses: dict[str, tuple[float, dict]] = {}
         self._users: dict[str, dict | None] = {}
 
@@ -132,15 +132,20 @@ class JiraService:
         return {
             "enabled": self.settings.enabled,
             "baseUrl": self.settings.base_url,
-            "projectKey": self.settings.project_key,
+            "projectKey": next(iter(self.settings.project_keys), None),
+            "projectKeys": list(self.settings.project_keys),
             "issueType": self.settings.issue_type,
         }
 
-    def meta(self, refresh: bool = False) -> dict:
-        cached = self._meta
+    def meta(self, refresh: bool = False, project_key: str | None = None) -> dict:
+        project = project_key if project_key is not None else next(iter(self.settings.project_keys), None)
+        if project is not None and project not in self.settings.project_keys:
+            raise HTTPException(status_code=400, detail="Проект Jira не настроен")
+        if project is None:
+            raise HTTPException(status_code=503, detail="Проекты Jira не настроены")
+        cached = self._meta.get(project)
         if not refresh and cached and time.monotonic() - cached[0] < META_TTL_SECONDS:
             return cached[1]
-        project = self.settings.project_key
         try:
             types = self.client.issue_types(project)
             wanted = self.settings.issue_type.lower()
@@ -176,7 +181,7 @@ class JiraService:
                 if item["required"] and field_id not in BUILTIN and item["control"] == "unsupported" and not item["hasDefaultValue"]
             ],
         }
-        self._meta = (time.monotonic(), meta)
+        self._meta[project] = (time.monotonic(), meta)
         return meta
 
     # ─── draft ───
@@ -439,8 +444,10 @@ class JiraService:
     def create_issue(self, request: BugIssueRequest) -> dict:
         if not request.expected.strip():
             raise HTTPException(status_code=400, detail="Заполните ожидаемый результат")
+        if request.description is not None and not request.description.strip():
+            raise HTTPException(status_code=400, detail="Заполните описание задачи")
         client = self.client
-        meta = self.meta(refresh=True)
+        meta = self.meta(refresh=True, project_key=request.projectKey)
         prepared = self._prepare(request.reportId, request.testId)
         attachments = self._chosen_attachments(prepared, request)
         description = self._description(prepared, request, request.expected, attachments)
@@ -449,7 +456,7 @@ class JiraService:
             "project": {"key": meta["projectKey"]},
             "issuetype": {"id": meta["issueType"]["id"]},
             "summary": " ".join(request.summary.split())[:255],
-            "description": description["text"],
+            "description": self.masker.mask(request.description) if request.description is not None else description["text"],
         }
         labels = self._labels(request.labels) if request.labels is not None else self._labels(prepared_tags(prepared))
         if "labels" in available and labels:

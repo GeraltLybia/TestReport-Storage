@@ -241,7 +241,7 @@ Frontend dev server: `http://localhost:5173`
 Интеграция с Jira (Server / Data Center 9.x, задачи создаются от сервисного аккаунта):
 - `JIRA_BASE_URL` - адрес Jira, например `https://jira.company.ru`
 - `JIRA_TOKEN` - Personal Access Token сервисного аккаунта
-- `JIRA_PROJECT_KEY` - проект, в котором создаются баги
+- `JIRA_PROJECT_KEY` - проект или список проектов через запятую (`CLM,QA,CORE`). Первый выбран по умолчанию. Для одного проекта переключатель не отображается. При переключении загружаются поля выбранного проекта, общие заполненные поля сохраняются, если их значения доступны в новом проекте. `JIRA_ISSUE_TYPE` един для всех проектов.
 - `JIRA_ISSUE_TYPE` - тип задачи (по умолчанию: `Bug`)
 - `JIRA_DEFAULT_LABELS` - метки каждой задачи через запятую (по умолчанию: `autotest`)
 - `JIRA_VERIFY_SSL` - `false`, чтобы не проверять сертификат Jira; `JIRA_CA_BUNDLE` - путь к своему CA
