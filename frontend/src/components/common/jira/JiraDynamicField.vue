@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import type { JiraField } from '../../../types/jira'
-import { isEmptyField, optionLabel, optionValue, sameOption } from '../../../utils/jiraFields'
+import { defaultFieldLabel, hasFixedDefault, initialFieldValue, isEmptyField, optionLabel, optionValue, sameOption } from '../../../utils/jiraFields'
 
 const props = defineProps<{ field: JiraField; disabled?: boolean; invalid?: boolean }>()
 const model = defineModel<unknown>()
+const fixedDefault = computed(() => hasFixedDefault(props.field))
+watch(() => props.field, field => {
+  if (hasFixedDefault(field)) model.value = initialFieldValue(field)
+}, { immediate: true })
 const multiple = computed(() => props.field.control === 'multiselect')
 const selectedIndices = computed(() => props.field.allowedValues.flatMap((option, index) => {
   const selected = multiple.value ? Array.isArray(model.value) && model.value.some(v => sameOption(v, option)) : sameOption(model.value, option)
@@ -55,8 +59,9 @@ function input(event: Event) {
 <template>
   <div class="bug-field" :class="{ 'bug-field--wide': field.control === 'textarea' }">
     <label :for="`jira-${field.id}`" class="bug-label">{{ field.name }}<span v-if="field.required" aria-hidden="true"> *</span></label>
+    <input v-if="fixedDefault" :id="`jira-${field.id}`" class="bug-input bug-input--static" :value="defaultFieldLabel(field)" readonly :disabled="disabled" :aria-required="field.required" :aria-describedby="`jira-${field.id}-default`" />
     <select
-      v-if="['select', 'multiselect', 'cascade'].includes(field.control)"
+      v-else-if="['select', 'multiselect', 'cascade'].includes(field.control)"
       :id="`jira-${field.id}`" class="bug-input" :multiple="multiple" :disabled="disabled"
       :value="multiple ? selectedIndices : selectedIndices[0] ?? ''" :aria-required="field.required" :aria-invalid="invalid || undefined" @change="select"
     >
@@ -66,16 +71,19 @@ function input(event: Event) {
     <select v-else-if="field.control === 'boolean'" :id="`jira-${field.id}`" v-model="model" class="bug-input" :disabled="disabled" :aria-required="field.required" :aria-invalid="invalid || undefined">
       <option :value="null">Не задано</option><option :value="true">Да</option><option :value="false">Нет</option>
     </select>
-    <textarea v-else-if="field.control === 'textarea'" :id="`jira-${field.id}`" class="bug-input" :value="text" :disabled="disabled" :aria-required="field.required" :aria-invalid="invalid || undefined" @input="input"></textarea>
+    <textarea v-else-if="field.control === 'textarea'" :id="`jira-${field.id}`" class="bug-input bug-textarea" rows="4" :value="text" :disabled="disabled" :aria-required="field.required" :aria-invalid="invalid || undefined" @input="input"></textarea>
     <input v-else :id="`jira-${field.id}`" class="bug-input" :type="['number', 'date', 'datetime-local'].includes(field.control) ? field.control : 'text'" :step="field.control === 'number' ? (field.schema.type === 'integer' ? '1' : 'any') : undefined" :value="text" :disabled="disabled" :aria-required="field.required" :aria-invalid="invalid || undefined" @input="input" @change="input" />
-    <template v-if="field.control === 'cascade' && children.length">
+    <template v-if="!fixedDefault && field.control === 'cascade' && children.length">
       <label :for="`jira-${field.id}-child`" class="bug-label">{{ field.name }} — уточнение</label>
       <select :id="`jira-${field.id}-child`" class="bug-input" :value="childIndex < 0 ? '' : String(childIndex)" :disabled="disabled" @change="selectChild">
         <option value="">Без уточнения</option>
         <option v-for="(option, index) in children" :key="index" :value="String(index)">{{ optionLabel(option) }}</option>
       </select>
     </template>
-    <span v-if="['strings', 'users'].includes(field.control)" class="bug-field-note">Несколько значений — через запятую</span>
+    <span v-if="fixedDefault" :id="`jira-${field.id}-default`" class="bug-field-note">Значение по умолчанию из Jira</span>
+    <span v-else-if="['strings', 'users'].includes(field.control)" class="bug-field-note">Несколько значений — через запятую</span>
     <span v-if="invalid && isEmptyField(model)" class="bug-field-note tone-failed">Заполните обязательное поле</span>
   </div>
 </template>
+
+<style scoped src="../../../assets/style/components/jira/JiraFields.css"></style>

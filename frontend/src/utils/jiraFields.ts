@@ -6,6 +6,24 @@ export function isEmptyField(value: unknown): boolean {
   return value == null || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length) || (typeof value === 'object' && !Object.keys(value).length)
 }
 
+export function hasFixedDefault(field: JiraField): boolean {
+  return field.defaultValue != null && field.allowedValues.length === 0
+}
+
+export function defaultFieldLabel(field: JiraField): string {
+  const label = (value: unknown): string => {
+    if (value === true) return 'Да'
+    if (value === false) return 'Нет'
+    if (value && typeof value === 'object') {
+      const text = optionLabel(value)
+      const child = (value as Record<string, unknown>).child
+      return child ? `${text} / ${label(child)}` : text || JSON.stringify(value)
+    }
+    return String(value ?? '')
+  }
+  return Array.isArray(field.defaultValue) ? field.defaultValue.map(label).join(', ') : label(field.defaultValue)
+}
+
 export function optionValue(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>
@@ -48,7 +66,7 @@ export function dynamicFields(fields: JiraField[]): JiraField[] {
 export function mergeProjectFields(previous: JiraField[], next: JiraField[], values: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(dynamicFields(next).map(field => {
     const shared = previous.some(old => old.id === field.id && old.control === field.control)
-    let value = shared && field.id in values ? values[field.id] : initialFieldValue(field)
+    let value = !hasFixedDefault(field) && shared && field.id in values ? values[field.id] : initialFieldValue(field)
     if (shared && field.allowedValues.length) {
       if (field.control === 'select' && !field.allowedValues.some(option => sameOption(option, value))) value = null
       if (field.control === 'multiselect' && Array.isArray(value)) {

@@ -58,6 +58,10 @@ def empty(value) -> bool:
     return value is None or value == "" or value == [] or value == {} or (isinstance(value, str) and not value.strip())
 
 
+def fixed_default(field: dict) -> bool:
+    return field["defaultValue"] is not None and not field["allowedValues"]
+
+
 def option_key(value):
     if isinstance(value, dict):
         return next(((k, str(value[k])) for k in ("id", "name", "value", "key") if k in value), None)
@@ -112,7 +116,7 @@ def apply_fields(fields: dict, submitted: dict, definitions: list[dict]) -> None
         definition = by_id.get(key)
         if key in BUILTIN or not definition or definition["control"] == "unsupported":
             raise HTTPException(400, f"Поле «{key}» нельзя задать в этой форме")
-        if not empty(value):
+        if not fixed_default(definition) and not empty(value):
             validate_value(definition, value)
             if definition["control"] == "datetime-local":
                 parsed = datetime.fromisoformat(value)
@@ -121,6 +125,10 @@ def apply_fields(fields: dict, submitted: dict, definitions: list[dict]) -> None
     for definition in definitions:
         key = definition["id"]
         if key in GENERATED:
+            continue
+        if fixed_default(definition):
+            # Jira's own default is authoritative when it offers no choices.
+            fields[key] = definition["defaultValue"]
             continue
         # Jira applies its own defaults when an optional field is omitted.
         if empty(fields.get(key)) and definition["required"]:

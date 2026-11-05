@@ -7,6 +7,9 @@ function field(id: string, overrides: Partial<JiraField> = {}): JiraField {
 }
 
 describe('shared Jira fields between projects', () => {
+  it('replaces a shared value with the target fixed default', () => {
+    expect(mergeProjectFields([field('same')], [field('same', { defaultValue: 'Target default' })], { same: 'Previous input' })).toEqual({ same: 'Target default' })
+  })
   it('preserves text, cleared values, zero and false; defaults new fields and drops removed fields', () => {
     const shared = [field('text'), field('cleared'), field('zero', { control: 'number' }), field('false', { control: 'boolean' })]
     expect(mergeProjectFields([...shared, field('removed')], [...shared, field('new', { defaultValue: 'Default' })], {

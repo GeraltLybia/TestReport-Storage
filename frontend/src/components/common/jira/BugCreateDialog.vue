@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import JiraDynamicField from './JiraDynamicField.vue'
-import { dynamicFields, initialFieldValue, isEmptyField, mergeProjectFields } from '../../../utils/jiraFields'
+import { dynamicFields, hasFixedDefault, initialFieldValue, isEmptyField, mergeProjectFields } from '../../../utils/jiraFields'
 
 import { commentBug, createBug, fetchBugDraft, fetchJiraMeta, previewBug } from '../../../api/jira'
 import { fetchReportResults } from '../../../api/reports'
@@ -195,6 +195,25 @@ let metaController: AbortController | null = null
 const extraValues = ref<Record<string, unknown>>({})
 const invalidFields = ref(new Set<string>())
 const additionalFields = computed(() => dynamicFields(meta.value?.fieldDefinitions ?? []))
+const fixedBuiltinFields = computed(() => (meta.value?.fieldDefinitions ?? []).filter(field =>
+  ['priority', 'assignee', 'components', 'labels'].includes(field.id) && hasFixedDefault(field),
+))
+function fixedBuiltin(id: string) { return fixedBuiltinFields.value.some(field => field.id === id) }
+function applyFixedSystemDefaults() {
+  for (const field of fixedBuiltinFields.value) {
+    const value = field.defaultValue
+    const key = (item: unknown) => String(item && typeof item === 'object' ? (item as Record<string, unknown>).id : item)
+    if (field.id === 'priority') priority.value = key(value)
+    if (field.id === 'components') components.value = Array.isArray(value) ? value.map(key) : []
+    if (field.id === 'labels') labels.value = Array.isArray(value) ? value.map(String) : []
+    if (field.id === 'assignee') assignee.value = String(value && typeof value === 'object' ? (value as Record<string, unknown>).name ?? '' : value)
+  }
+}
+const showOptionalFields = ref(false)
+const optionalFieldCount = computed(() =>
+  additionalFields.value.filter(field => !field.required).length +
+  ['priority', 'assignee', 'components', 'labels'].filter(id => meta.value?.fields.includes(id) && !requiredField(id)).length,
+)
 function hasField(id: string) { return !meta.value || meta.value.fields.includes(id) }
 function requiredField(id: string) { return meta.value?.fieldDefinitions.find(f => f.id === id)?.required ?? false }
 function applySystemDefaults() {
@@ -208,6 +227,7 @@ function applySystemDefaults() {
   if (Array.isArray(labelDefaults)) labels.value = [...new Set([...labels.value, ...labelDefaults.map(String)])]
   const userDefault = defaults('assignee') as { name?: string } | undefined
   if (!assignee.value && userDefault?.name) assignee.value = userDefault.name
+  applyFixedSystemDefaults()
 }
 function resetExtraFields() {
   extraValues.value = Object.fromEntries(additionalFields.value.map(f => [f.id, initialFieldValue(f)]))
@@ -241,6 +261,7 @@ async function loadMeta() {
         }
       }
     }
+    applyFixedSystemDefaults()
     invalidFields.value = new Set()
     metaError.value = null
   } catch (exception) {
@@ -789,7 +810,13 @@ onBeforeUnmount(() => {
                 <h3>Задача</h3>
                 <span v-if="jiraHost" class="bug-hint">{{ jiraHost }}</span>
               </div>
-              <div class="bug-fields">
+              <div v-if="optionalFieldCount" class="bug-optional-fields">
+                <button type="button" class="bug-tool" :aria-expanded="showOptionalFields" aria-controls="bug-issue-fields" @click="showOptionalFields = !showOptionalFields">
+                  {{ showOptionalFields ? 'Скрыть необязательные поля' : `Показать необязательные поля (${optionalFieldCount})` }}
+                </button>
+                <span class="bug-hint">Заполненные значения сохраняются при скрытии.</span>
+              </div>
+              <div id="bug-issue-fields" class="bug-fields">
                 <label class="bug-field">
                   <span class="bug-label">Проект</span>
                   <select v-if="projects.length > 1" v-model="selectedProject" class="bug-input" aria-label="Проект Jira" :disabled="mode.type === 'comment'">
@@ -807,20 +834,25 @@ onBeforeUnmount(() => {
                   <span class="bug-label">Заголовок *</span>
                   <input v-model="summary" class="bug-input" maxlength="255" :disabled="mode.type === 'comment'" />
                 </label>
-                <label v-if="hasField('priority')" class="bug-field">
+                <JiraDynamicField
+                  v-for="field in fixedBuiltinFields"
+                  v-show="field.required || showOptionalFields"
+                  :key="field.id" :field="field" :disabled="mode.type === 'comment' || submitting"
+                />
+                <label v-if="hasField('priority') && !fixedBuiltin('priority')" v-show="showOptionalFields || requiredField('priority')" class="bug-field">
                   <span class="bug-label">Приоритет{{ requiredField('priority') ? ' *' : '' }}</span>
                   <select v-model="priority" class="bug-input" :disabled="!meta?.priorities.length || mode.type === 'comment'">
                     <option v-if="!meta?.priorities.length" :value="null">Нет данных из Jira</option>
                     <option v-for="item in meta?.priorities ?? []" :key="item.id" :value="item.id">{{ item.name }}</option>
                   </select>
                 </label>
-                <label v-if="hasField('assignee')" class="bug-field">
+                <label v-if="hasField('assignee') && !fixedBuiltin('assignee')" v-show="showOptionalFields || requiredField('assignee')" class="bug-field">
                   <span class="bug-label">Исполнитель{{ requiredField('assignee') ? ' *' : '' }}</span>
                   <input v-model="assignee" class="bug-input" placeholder="Не назначен" :disabled="mode.type === 'comment'" />
                   <span v-if="assigneeMissing" class="bug-field-note tone-broken">{{ assigneeMissing }}</span>
                   <span v-else-if="assigneeHint" class="bug-field-note">{{ assigneeHint }}</span>
                 </label>
-                <div v-if="hasField('components')" class="bug-field">
+                <div v-if="hasField('components') && !fixedBuiltin('components')" v-show="showOptionalFields || requiredField('components')" class="bug-field">
                   <span class="bug-label">Компоненты{{ requiredField('components') ? ' *' : '' }}</span>
                   <div class="bug-input bug-input--chips">
                     <span v-for="id in components" :key="id" class="bug-chip">
@@ -839,7 +871,7 @@ onBeforeUnmount(() => {
                     <span v-else-if="!components.length" class="bug-muted">{{ meta ? 'Нет компонентов' : 'Нет данных из Jira' }}</span>
                   </div>
                 </div>
-                <div v-if="hasField('labels')" class="bug-field">
+                <div v-if="hasField('labels') && !fixedBuiltin('labels')" v-show="showOptionalFields || requiredField('labels')" class="bug-field">
                   <span class="bug-label">Метки{{ requiredField('labels') ? ' *' : '' }}</span>
                   <div class="bug-input bug-input--chips">
                     <span v-for="label in labels" :key="label" class="bug-chip">
@@ -858,7 +890,10 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <JiraDynamicField
-                  v-for="field in additionalFields" :key="field.id" v-model="extraValues[field.id]"
+                  v-for="field in additionalFields"
+                  v-show="field.required || showOptionalFields"
+                  :key="field.id"
+                  v-model="extraValues[field.id]"
                   :field="field" :disabled="mode.type === 'comment' || submitting"
                   :invalid="invalidFields.has(field.id) && isEmptyField(extraValues[field.id])"
                 />
@@ -1012,4 +1047,5 @@ onBeforeUnmount(() => {
   </Teleport>
 </template>
 
+<style scoped src="../../../assets/style/components/jira/JiraFields.css"></style>
 <style scoped src="../../../assets/style/components/jira/BugCreateDialog.css"></style>

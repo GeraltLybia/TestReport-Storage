@@ -9,6 +9,41 @@ function field(overrides: Partial<JiraField> = {}): JiraField {
 }
 
 describe('Jira create-screen fields', () => {
+  it.each([
+    ['text', 'Default text', 'Default text'],
+    ['number', 0, '0'],
+    ['boolean', false, 'Нет'],
+    ['user', { name: 'alice', displayName: 'Alice' }, 'Alice'],
+    ['select', { id: '10', value: 'Default option' }, 'Default option'],
+    ['multiselect', [{ id: '10', name: 'First' }, { id: '20', name: 'Second' }], 'First, Second'],
+  ] as const)('shows a read-only default for %s without allowed values', (control, defaultValue, label) => {
+    const definition = field({ control, defaultValue, hasDefaultValue: true })
+    const wrapper = mount(JiraDynamicField, { props: { field: definition } })
+    const input = wrapper.get('input')
+    expect(input.attributes('readonly')).toBeDefined()
+    expect(input.element.value).toBe(label)
+    expect(wrapper.text()).toContain('Значение по умолчанию из Jira')
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([initialFieldValue(definition)])
+  })
+
+  it('keeps a field editable when only the default flag is present', () => {
+    const wrapper = mount(JiraDynamicField, { props: { field: field({ hasDefaultValue: true, defaultValue: null }) } })
+    expect(wrapper.get('input').attributes('readonly')).toBeUndefined()
+  })
+
+  it('updates a fixed default when switching projects and unlocks a field with options', async () => {
+    const wrapper = mount(JiraDynamicField, { props: { field: field({ defaultValue: 'First' }) } })
+    await wrapper.setProps({ field: field({ defaultValue: 'Second' }) })
+    expect(wrapper.get('input').element.value).toBe('Second')
+    const defaults = wrapper.emitted('update:modelValue')!
+    expect(defaults[defaults.length - 1]).toEqual(['Second'])
+    await wrapper.setProps({ field: field({ control: 'select', defaultValue: { id: '10' }, allowedValues: [{ id: '10' }, { id: '20' }] }) })
+    expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
+    await wrapper.get('select').setValue('1')
+    const events = wrapper.emitted('update:modelValue')!
+    expect(events[events.length - 1]).toEqual([{ id: '20' }])
+  })
+
   it('shows a required field and its validation message', () => {
     const wrapper = mount(JiraDynamicField, { props: { field: field(), invalid: true } })
     expect(wrapper.get('label').text()).toBe('Business unit *')

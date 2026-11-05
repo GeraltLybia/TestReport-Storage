@@ -130,6 +130,34 @@ async function enableProjects() {
 }
 
 describe('Jira project switching', () => {
+  it('uses target fixed defaults for shared custom and built-in fields and submits them', async () => {
+    await enableProjects()
+    vi.mocked(fetchJiraMeta).mockResolvedValueOnce(projectMeta('CORE', [
+      { ...textField('customfield_shared'), required: true },
+    ]))
+    await wrapper.get('[aria-label="Проект Jira"]').setValue('CORE')
+    await flushPromises()
+    await wrapper.get('#jira-customfield_shared').setValue('Previous input')
+    vi.mocked(fetchJiraMeta).mockResolvedValueOnce(projectMeta('APP', [
+      { ...textField('customfield_shared', 'APP default'), required: true },
+      { ...textField('assignee', { name: 'alice', displayName: 'Alice' }), control: 'user', required: true },
+      { ...textField('priority', { id: '1', name: 'High' }), control: 'select', required: true },
+    ]))
+    await wrapper.get('[aria-label="Проект Jira"]').setValue('APP')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('#jira-customfield_shared').element.value).toBe('APP default')
+    expect(wrapper.get('#jira-customfield_shared').attributes('readonly')).toBeDefined()
+    expect(wrapper.get<HTMLInputElement>('#jira-assignee').element.value).toBe('Alice')
+    expect(wrapper.get('#jira-assignee').attributes('readonly')).toBeDefined()
+    expect(wrapper.get<HTMLInputElement>('#jira-priority').element.value).toBe('High')
+    await openReview()
+    await wrapper.get('.bug-btn--primary').trigger('click')
+    await flushPromises()
+    expect(createBug).toHaveBeenCalledWith(expect.objectContaining({
+      projectKey: 'APP', assignee: 'alice', priority: '1', extraFields: { customfield_shared: 'APP default' },
+    }))
+  })
+
   it('preserves shared priority, components, labels and assignee', async () => {
     const fields = [textField('priority'), textField('components'), textField('labels'), textField('assignee')]
     const source = {
@@ -141,6 +169,7 @@ describe('Jira project switching', () => {
     await enableProjects()
     await wrapper.get('[aria-label="Проект Jira"]').setValue('CORE')
     await flushPromises()
+    await wrapper.get('[aria-controls="bug-issue-fields"]').trigger('click')
     const label = (name: string) => wrapper.findAll('label').find(item => item.find('.bug-label').exists() && item.get('.bug-label').text() === name)!
     await label('Приоритет').get('select').setValue('1')
     await label('Исполнитель').get('input').setValue('alice')
@@ -169,6 +198,7 @@ describe('Jira project switching', () => {
     await enableProjects()
     await wrapper.get('[aria-label="Проект Jira"]').setValue('CORE')
     await flushPromises()
+    await wrapper.get('[aria-controls="bug-issue-fields"]').trigger('click')
     await wrapper.get('#jira-customfield_shared').setValue('Keep me')
     await wrapper.get('#jira-customfield_old').setValue('Only CORE')
     vi.mocked(fetchJiraMeta).mockResolvedValueOnce(projectMeta('APP', [shared, textField('customfield_new', 'New default')]))
@@ -234,5 +264,72 @@ describe('Jira project switching', () => {
     await wrapper.get('.bug-btn--primary').trigger('click')
     await flushPromises()
     expect(previewBug).toHaveBeenCalledOnce()
+  })
+})
+
+describe('optional Jira fields', () => {
+  async function loadFields() {
+    await enableProjects()
+    vi.mocked(fetchJiraMeta).mockResolvedValueOnce({ ...projectMeta('CORE', [
+      { ...textField('customfield_required'), required: true },
+      textField('customfield_optional'),
+      { ...textField('priority'), required: true },
+      textField('assignee'),
+    ]), priorities: [{ id: '1', name: 'High' }], defaultPriority: '1' })
+    await wrapper.get('[aria-label="Проект Jira"]').setValue('CORE')
+    await flushPromises()
+  }
+
+  it('hides optional built-in and custom fields by default and keeps required fields visible', async () => {
+    await loadFields()
+    expect(wrapper.get('#jira-customfield_required').isVisible()).toBe(true)
+    expect(wrapper.get('#jira-customfield_optional').isVisible()).toBe(false)
+    const fields = wrapper.findAll('.bug-field')
+    expect(fields.find(field => field.find('.bug-label').exists() && field.get('.bug-label').text() === 'Приоритет *')?.isVisible()).toBe(true)
+    expect(fields.find(field => field.find('.bug-label').exists() && field.get('.bug-label').text() === 'Исполнитель')?.isVisible()).toBe(false)
+    const toggle = wrapper.get('[aria-controls="bug-issue-fields"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.text()).toContain('(2)')
+    await toggle.trigger('click')
+    expect(wrapper.get('#jira-customfield_optional').isVisible()).toBe(true)
+    expect(wrapper.get('[aria-controls="bug-issue-fields"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.findAll('.bug-field').find(field => field.find('.bug-label').exists() && field.get('.bug-label').text() === 'Исполнитель')?.isVisible()).toBe(true)
+  })
+
+  it('preserves optional input when hidden and sends it together with required fields', async () => {
+    await loadFields()
+    const toggle = wrapper.get('[aria-controls="bug-issue-fields"]')
+    await toggle.trigger('click')
+    await wrapper.get('#jira-customfield_optional').setValue('Keep optional text')
+    const assignee = wrapper.findAll('label').find(label => label.find('.bug-label').exists() && label.get('.bug-label').text() === 'Исполнитель')!.get('input')
+    await assignee.setValue('alice')
+    await toggle.trigger('click')
+    expect(wrapper.get('#jira-customfield_optional').isVisible()).toBe(false)
+    await toggle.trigger('click')
+    expect(wrapper.get<HTMLInputElement>('#jira-customfield_optional').element.value).toBe('Keep optional text')
+    expect((assignee.element as HTMLInputElement).value).toBe('alice')
+    await toggle.trigger('click')
+    await wrapper.get('#jira-customfield_required').setValue('Required text')
+    await openReview()
+    await wrapper.get('.bug-btn--primary').trigger('click')
+    await flushPromises()
+    expect(createBug).toHaveBeenCalledWith(expect.objectContaining({
+      assignee: 'alice', extraFields: { customfield_required: 'Required text', customfield_optional: 'Keep optional text' },
+    }))
+  })
+
+  it('reveals a previously optional field when it is required in the next project', async () => {
+    await loadFields()
+    expect(wrapper.get('#jira-customfield_optional').isVisible()).toBe(false)
+    vi.mocked(fetchJiraMeta).mockResolvedValueOnce(projectMeta('APP', [
+      { ...textField('customfield_optional'), required: true },
+    ]))
+    await wrapper.get('[aria-label="Проект Jira"]').setValue('APP')
+    await flushPromises()
+    expect(wrapper.get('#jira-customfield_optional').isVisible()).toBe(true)
+    expect(wrapper.find('[aria-controls="bug-issue-fields"]').exists()).toBe(false)
+    await openReview()
+    expect(wrapper.get('[role="alert"]').text()).toContain('customfield_optional')
+    expect(previewBug).not.toHaveBeenCalled()
   })
 })
