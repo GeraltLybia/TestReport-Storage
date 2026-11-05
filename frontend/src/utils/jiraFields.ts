@@ -7,7 +7,7 @@ export function isEmptyField(value: unknown): boolean {
 }
 
 export function hasFixedDefault(field: JiraField): boolean {
-  return field.defaultValue != null && field.allowedValues.length === 0
+  return field.id !== 'assignee' && field.defaultValue != null && field.allowedValues.length === 0
 }
 
 export function defaultFieldLabel(field: JiraField): string {

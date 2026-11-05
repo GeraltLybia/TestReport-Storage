@@ -12,6 +12,17 @@ vi.mock('../../../api/reports', () => ({ fetchReportResults: vi.fn() }))
 
 let wrapper: VueWrapper
 
+function mountDialog() {
+  return mount(BugCreateDialog, {
+    props: {
+      reportId: 'report-1', initialTestId: 'test-1', context: 'Run', links: {},
+      config: { enabled: true, baseUrl: 'https://jira.example', projectKey: 'QA', issueType: 'Bug' },
+    },
+    global: { stubs: { teleport: true } },
+    attachTo: document.body,
+  })
+}
+
 beforeEach(async () => {
   vi.resetAllMocks()
   vi.mocked(fetchReportResults).mockResolvedValue({ items: [] } as unknown as Awaited<ReturnType<typeof fetchReportResults>>)
@@ -28,14 +39,7 @@ beforeEach(async () => {
   } as unknown as JiraMeta)
   vi.mocked(previewBug).mockResolvedValue({ description: 'h3. Шаги\n# Первый шаг', steps: 1, logLines: 0 })
   vi.mocked(createBug).mockResolvedValue({ key: 'QA-1' } as Awaited<ReturnType<typeof createBug>>)
-  wrapper = mount(BugCreateDialog, {
-    props: {
-      reportId: 'report-1', initialTestId: 'test-1', context: 'Run', links: {},
-      config: { enabled: true, baseUrl: 'https://jira.example', projectKey: 'QA', issueType: 'Bug' },
-    },
-    global: { stubs: { teleport: true } },
-    attachTo: document.body,
-  })
+  wrapper = mountDialog()
   await flushPromises()
 })
 
@@ -57,9 +61,29 @@ describe('bug review before filing', () => {
     expect(createBug).toHaveBeenCalledWith(expect.objectContaining({ projectKey: 'QA' }))
   })
   it('requires the expected result before preparing the final text', async () => {
-    await wrapper.get('.bug-footer .bug-btn--primary').trigger('click')
-    expect(wrapper.text()).toContain('Опишите ожидаемый результат')
+    const original = HTMLElement.prototype.scrollIntoView
+    const scroll = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scroll
+    try {
+      await wrapper.get('.bug-footer .bug-btn--primary').trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain('Опишите ожидаемый результат')
+      expect(document.activeElement).toBe(wrapper.get('#bug-expected').element)
+      expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
     expect(previewBug).not.toHaveBeenCalled()
+    expect(createBug).not.toHaveBeenCalled()
+  })
+
+  it('opens the preview tab and focuses an empty expected result when markup is displayed', async () => {
+    await wrapper.findAll('button').find(button => button.text() === 'Разметка Jira')!.trigger('click')
+    expect(wrapper.find('#bug-expected').exists()).toBe(false)
+    await wrapper.get('.bug-footer .bug-btn--primary').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('#bug-expected').element)
+    expect(wrapper.get('#bug-expected').attributes('aria-invalid')).toBe('true')
     expect(createBug).not.toHaveBeenCalled()
   })
 
@@ -129,6 +153,63 @@ async function enableProjects() {
   await wrapper.setProps({ config: { enabled: true, baseUrl: 'https://jira.example', projectKey: 'QA', projectKeys: ['QA', 'CORE', 'APP'], issueType: 'Bug' } })
 }
 
+describe('test author as Jira assignee', () => {
+  async function remountWithAuthor(defaultName: string, authorFound = true, lateMeta = false) {
+    const draft = await vi.mocked(fetchBugDraft).mock.results[0]!.value as BugDraft
+    wrapper.unmount()
+    vi.mocked(fetchBugDraft).mockResolvedValueOnce({
+      ...draft, suggested: { ...draft.suggested, assignee: { name: 'test-author', displayName: 'Test Author', found: authorFound } },
+    })
+    const metadata = projectMeta('QA', [{
+      ...textField('assignee', { name: defaultName }), control: 'user', required: true,
+    }])
+    let resolveMeta!: (value: JiraMeta) => void
+    if (lateMeta) vi.mocked(fetchJiraMeta).mockReturnValueOnce(new Promise(resolve => { resolveMeta = resolve }))
+    else vi.mocked(fetchJiraMeta).mockResolvedValueOnce(metadata)
+    wrapper = mountDialog()
+    await flushPromises()
+    if (lateMeta) {
+      resolveMeta(metadata)
+      await flushPromises()
+    }
+  }
+
+  it.each([
+    ['-1', false], ['-1', true], ['jira-default', false], ['jira-default', true],
+  ] as const)('keeps the author instead of default %s with late metadata=%s', async (defaultName, lateMeta) => {
+    await remountWithAuthor(defaultName, true, lateMeta)
+    expect(wrapper.get<HTMLInputElement>('#bug-assignee').element.value).toBe('test-author')
+    expect(wrapper.get('#bug-assignee').attributes('readonly')).toBeUndefined()
+    expect(wrapper.text()).toContain('Test Author · автор теста')
+    await openReview()
+    await wrapper.get('.bug-btn--primary').trigger('click')
+    await flushPromises()
+    expect(createBug).toHaveBeenCalledWith(expect.objectContaining({ assignee: 'test-author' }))
+  })
+
+  it('keeps manual assignee edits after switching to a project with default -1', async () => {
+    await remountWithAuthor('-1')
+    await wrapper.get('#bug-assignee').setValue('manual-user')
+    await enableProjects()
+    vi.mocked(fetchJiraMeta).mockResolvedValueOnce(projectMeta('CORE', [{
+      ...textField('assignee', { name: '-1' }), control: 'user', required: true,
+    }]))
+    await wrapper.get('[aria-label="Проект Jira"]').setValue('CORE')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('#bug-assignee').element.value).toBe('manual-user')
+    await openReview()
+    await wrapper.get('.bug-btn--primary').trigger('click')
+    await flushPromises()
+    expect(createBug).toHaveBeenCalledWith(expect.objectContaining({ projectKey: 'CORE', assignee: 'manual-user' }))
+  })
+
+  it('does not put the -1 sentinel into the form if the author is not found', async () => {
+    await remountWithAuthor('-1', false)
+    expect(wrapper.get<HTMLInputElement>('#bug-assignee').element.value).toBe('')
+    expect(wrapper.text()).toContain('В Jira нет пользователя «test-author»')
+  })
+})
+
 describe('Jira project switching', () => {
   it('uses target fixed defaults for shared custom and built-in fields and submits them', async () => {
     await enableProjects()
@@ -147,8 +228,8 @@ describe('Jira project switching', () => {
     await flushPromises()
     expect(wrapper.get<HTMLInputElement>('#jira-customfield_shared').element.value).toBe('APP default')
     expect(wrapper.get('#jira-customfield_shared').attributes('readonly')).toBeDefined()
-    expect(wrapper.get<HTMLInputElement>('#jira-assignee').element.value).toBe('Alice')
-    expect(wrapper.get('#jira-assignee').attributes('readonly')).toBeDefined()
+    expect(wrapper.get<HTMLInputElement>('#bug-assignee').element.value).toBe('alice')
+    expect(wrapper.get('#bug-assignee').attributes('readonly')).toBeUndefined()
     expect(wrapper.get<HTMLInputElement>('#jira-priority').element.value).toBe('High')
     await openReview()
     await wrapper.get('.bug-btn--primary').trigger('click')

@@ -59,7 +59,7 @@ def empty(value) -> bool:
 
 
 def fixed_default(field: dict) -> bool:
-    return field["defaultValue"] is not None and not field["allowedValues"]
+    return field["id"] != "assignee" and field["defaultValue"] is not None and not field["allowedValues"]
 
 
 def option_key(value):

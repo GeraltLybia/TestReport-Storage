@@ -34,9 +34,17 @@ def test_default_with_choices_remains_editable():
 
 def test_fixed_builtin_default_is_applied_and_a_missing_default_does_not_lock_a_field():
     definitions = [
-        field_metadata({"fieldId": "assignee", "schema": {"type": "user"}, "defaultValue": {"name": "alice"}}),
+        field_metadata({"fieldId": "labels", "schema": {"type": "array", "items": "string"}, "defaultValue": ["autotest"]}),
         field_metadata({"fieldId": "customfield_text", "schema": {"type": "string"}, "hasDefaultValue": True}),
     ]
-    fields = {"assignee": {"name": "other"}}
+    fields = {"labels": ["other"]}
     apply_fields(fields, {"customfield_text": "Editable"}, definitions)
-    assert fields == {"assignee": {"name": "alice"}, "customfield_text": "Editable"}
+    assert fields == {"labels": ["autotest"], "customfield_text": "Editable"}
+
+
+@pytest.mark.parametrize("default", [{"name": "-1"}, {"name": "default-user"}])
+def test_jira_assignee_default_does_not_override_test_author_or_manual_assignee(default):
+    definition = field_metadata({"fieldId": "assignee", "schema": {"type": "user"}, "defaultValue": default})
+    fields = {"assignee": {"name": "test-author"}}
+    apply_fields(fields, {}, [definition])
+    assert fields["assignee"] == {"name": "test-author"}

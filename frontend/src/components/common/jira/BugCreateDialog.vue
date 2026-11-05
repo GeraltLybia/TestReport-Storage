@@ -101,6 +101,7 @@ const logMode = ref<BugLogMode>('calls')
 const attachments = ref(new Set<string>())
 const summary = ref('')
 const expected = ref('')
+const expectedInput = ref<HTMLTextAreaElement | null>(null)
 const includeTrace = ref(true)
 const priority = ref<string | null>(null)
 const components = ref<string[]>([])
@@ -196,7 +197,7 @@ const extraValues = ref<Record<string, unknown>>({})
 const invalidFields = ref(new Set<string>())
 const additionalFields = computed(() => dynamicFields(meta.value?.fieldDefinitions ?? []))
 const fixedBuiltinFields = computed(() => (meta.value?.fieldDefinitions ?? []).filter(field =>
-  ['priority', 'assignee', 'components', 'labels'].includes(field.id) && hasFixedDefault(field),
+  ['priority', 'components', 'labels'].includes(field.id) && hasFixedDefault(field),
 ))
 function fixedBuiltin(id: string) { return fixedBuiltinFields.value.some(field => field.id === id) }
 function applyFixedSystemDefaults() {
@@ -206,7 +207,6 @@ function applyFixedSystemDefaults() {
     if (field.id === 'priority') priority.value = key(value)
     if (field.id === 'components') components.value = Array.isArray(value) ? value.map(key) : []
     if (field.id === 'labels') labels.value = Array.isArray(value) ? value.map(String) : []
-    if (field.id === 'assignee') assignee.value = String(value && typeof value === 'object' ? (value as Record<string, unknown>).name ?? '' : value)
   }
 }
 const showOptionalFields = ref(false)
@@ -226,7 +226,7 @@ function applySystemDefaults() {
   const labelDefaults = defaults('labels')
   if (Array.isArray(labelDefaults)) labels.value = [...new Set([...labels.value, ...labelDefaults.map(String)])]
   const userDefault = defaults('assignee') as { name?: string } | undefined
-  if (!assignee.value && userDefault?.name) assignee.value = userDefault.name
+  if (!assignee.value && userDefault?.name && userDefault.name !== '-1') assignee.value = userDefault.name
   applyFixedSystemDefaults()
 }
 function resetExtraFields() {
@@ -257,7 +257,10 @@ async function loadMeta() {
           const field = value.fieldDefinitions.find(field => field.id === id)
           if (id === 'components' && Array.isArray(field?.defaultValue)) components.value = field.defaultValue.map(item => String(item.id))
           if (id === 'labels' && Array.isArray(field?.defaultValue)) labels.value = [...new Set([...labels.value, ...field.defaultValue.map(String)])]
-          if (id === 'assignee' && !assignee.value) assignee.value = (field?.defaultValue as { name?: string } | null)?.name ?? ''
+          if (id === 'assignee' && !assignee.value) {
+            const name = (field?.defaultValue as { name?: string } | null)?.name
+            if (name && name !== '-1') assignee.value = name
+          }
         }
       }
     }
@@ -530,6 +533,9 @@ async function submit() {
   if (mode.value.type === 'create' && !expected.value.trim()) {
     expectedError.value = 'Опишите ожидаемый результат'
     tab.value = 'preview'
+    await nextTick()
+    expectedInput.value?.focus()
+    expectedInput.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
     return
   }
   if (mode.value.type === 'create') {
@@ -848,7 +854,7 @@ onBeforeUnmount(() => {
                 </label>
                 <label v-if="hasField('assignee') && !fixedBuiltin('assignee')" v-show="showOptionalFields || requiredField('assignee')" class="bug-field">
                   <span class="bug-label">Исполнитель{{ requiredField('assignee') ? ' *' : '' }}</span>
-                  <input v-model="assignee" class="bug-input" placeholder="Не назначен" :disabled="mode.type === 'comment'" />
+                  <input id="bug-assignee" v-model="assignee" class="bug-input" placeholder="Не назначен" :disabled="mode.type === 'comment'" />
                   <span v-if="assigneeMissing" class="bug-field-note tone-broken">{{ assigneeMissing }}</span>
                   <span v-else-if="assigneeHint" class="bug-field-note">{{ assigneeHint }}</span>
                 </label>
@@ -982,6 +988,7 @@ onBeforeUnmount(() => {
                     <h4><label for="bug-expected">Ожидаемый результат</label></h4>
                     <textarea
                       id="bug-expected"
+                      ref="expectedInput"
                       v-model="expected"
                       class="bug-input bug-textarea"
                       rows="2"
